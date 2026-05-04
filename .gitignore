@@ -53,6 +53,7 @@ survey/0_data_survey/**
 
 # All other NRS methods ignored (single-* so whitelists can work)
 survey/NRS/*
+!survey/NRS/native_forward_swap.py
 !survey/NRS/Improvement/
 survey/NRS/Improvement/*
 !survey/NRS/Improvement/single_solution_based/
