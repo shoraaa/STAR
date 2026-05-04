@@ -1,0 +1,22 @@
+[project]
+name = "STAR"
+version = "0.1.0"
+description = "STAR: Scoped Test-time Adaptation and Refinement for Neural Routing Solvers"
+readme = "README.md"
+requires-python = ">=3.8,<3.14"
+dependencies = [
+    "numpy",
+    "pybind11",
+    "cython",
+    "vrplib",
+    "torch",
+    "torchvision",
+    "tqdm",
+]
+
+[build-system]
+requires = ["setuptools>=45", "wheel", "cython", "pybind11"]
+build-backend = "setuptools.build_meta"
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/rocm6.3"

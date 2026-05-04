@@ -1,0 +1,22 @@
+[2026-04-30 10:36:24] test_survey.py(152) : DEBUG_MODE: False
+[2026-04-30 10:36:24] test_survey.py(153) : USE_CUDA: True, CUDA_DEVICE_NUM: 0
+[2026-04-30 10:36:24] test_survey.py(154) : env_params{'pomo_size': 1, 'k_nearest': 1, 'beam_width': 16, 'decode_method': 'greedy', 'mode': 'test', 'test_in_tsplib': True, 'tsplib_path': '/home/shora/Research/NRS_Survey/0_data_survey/survey_bench_tsp', 'data_path': '/home/shora/Research/NRS_Survey/0_data_survey/survey_bench_tsp', 'load_way': 'allin', 'sub_path': False, 'budget': 0, 'PRC': False, 'repair_max_sub_length': 1000, 'random_insertion': False}
+[2026-04-30 10:36:24] test_survey.py(154) : model_params{'mode': 'test', 'embedding_dim': 128, 'sqrt_embedding_dim': 11.313708498984761, 'encoder_layer_num': 6, 'qkv_dim': 16, 'head_num': 8, 'logit_clipping': 10, 'ff_hidden_dim': 512, 'eval_type': 'argmax', 'use_k_nearest': False, 'k_nearest_num': 1000}
+[2026-04-30 10:36:24] test_survey.py(154) : tester_params{'use_cuda': True, 'cuda_device_num': 0, 'model_load': {'path': './result/checkpoint-tsp1k.pt'}, 'test_episodes': 1, 'test_batch_size': 1}
+[2026-04-30 10:36:24] test_survey.py(154) : logger_params{'log_file': {'desc': 'test_random_insertion_False_PRC_False_budget_0', 'filename': 'log.txt', 'filepath': './result_survey_tsp/20260430_113624_test_random_insertion_False_PRC_False_budget_0'}}
+[2026-04-30 10:36:27] TSPTester.py(960) : greedy, name:['national_wi29'], gap:0.000000 %,  Elapsed[0.009040m], stu_l:27603.000000 , opt_l:27603.000000
+[2026-04-30 10:36:27] TSPTester.py(765) : [OK] inst:national_wi29, n:29, gap:0.000%, time:0.546s
+[2026-04-30 10:36:27] TSPTester.py(771) : ===============================================================
+[2026-04-30 10:36:27] TSPTester.py(772) : ===============================================================
+[2026-04-30 10:36:27] TSPTester.py(773) : ===== Bucket Finished =====
+[2026-04-30 10:36:27] TSPTester.py(780) : [0,1000)  count=1, avg_gap=0.000%, avg_time=0.546s
+[2026-04-30 10:36:27] TSPTester.py(783) : ===============================================================
+[2026-04-30 10:36:27] TSPTester.py(784) : ===============================================================
+[2026-04-30 10:36:27] TSPTester.py(804) : episode   1/  1, Elapsed[0.009105m], Remain[0.000000m], score:27603.000,Score_studetnt: 27603.0000, aug_score:27603.000
+[2026-04-30 10:36:27] TSPTester.py(811) : ===============================================================
+[2026-04-30 10:36:27] TSPTester.py(820) : #################  Summary  #################
+[2026-04-30 10:36:27] TSPTester.py(821) : All instances: 1/1 solved, total time: 0.55s, avg time/inst: 0.55s
+[2026-04-30 10:36:27] TSPTester.py(824) : [0,1000): count=1, avg_gap=0.000%, avg_time=0.546s
+[2026-04-30 10:36:27] TSPTester.py(827) : [1000,10000): count=0, avg_gap=0.000%, avg_time=0.000s
+[2026-04-30 10:36:27] TSPTester.py(830) : [10000,100000]: count=0, avg_gap=0.000%, avg_time=0.000s
+[2026-04-30 10:36:27] TSPTester.py(833) : Overall avg gap (no aug): 0.000%

@@ -1,0 +1,6 @@
+[2026-04-30 10:36:26] TSPTester_inTSPlib.py(618) : [TSPLIB] Resolved 1 instances from tsplib_cost under: /home/shora/Research/NRS_Survey/0_data_survey/survey_bench_tsp
+[2026-04-30 10:36:27] TSPTester_inTSPlib.py(669) : [Inst] national_wi29 (n=29) opt=27603.00, stu=27603.00, gap=0.000%, time=0.47s
+[2026-04-30 10:36:27] TSPTester_inTSPlib.py(674) : #################  All Done  #################
+[2026-04-30 10:36:27] TSPTester_inTSPlib.py(675) : All solved: 1/1, total time: 2.51s, avg per solved: 2.51s
+[2026-04-30 10:36:27] TSPTester_inTSPlib.py(684) : [0, 100001)  num=1, avg_gap=0.000%, avg_time=0.47s
+[2026-04-30 10:36:27] TSPTester_inTSPlib.py(686) : [All] num=1, avg_gap=0.000%, avg_time=0.47s

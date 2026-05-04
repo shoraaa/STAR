@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.o
+*.pyd
+*.egg-info/
+*.egg
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+results/
+output/
+*.log
+.omx/
+
+# Data (large files, download separately)
+survey/0_data_survey/**
+!survey/0_data_survey/survey_bench_cvrp/
+!survey/0_data_survey/survey_bench_cvrp/**
+!survey/0_data_survey/survey_bench_cvrp/**/
+
+# PyTorch/JAX checkpoints
+*.ckpt
+*.pth
+*.h5
+*.weights
+*.pt
+# Whitelist: all pretrained models inside the LNS (restricted) directory
+!survey/NRS/Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/**/
+!survey/NRS/Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/**/*.pt
+
+# Jupyter
+.ipynb_checkpoints/
+
+# All other NRS methods ignored (single-* so whitelists can work)
+survey/NRS/*
+!survey/NRS/Improvement/
+survey/NRS/Improvement/*
+!survey/NRS/Improvement/single_solution_based/
+survey/NRS/Improvement/single_solution_based/*
+!survey/NRS/Improvement/single_solution_based/large neighborhood/
+survey/NRS/Improvement/single_solution_based/large neighborhood/*
+!survey/NRS/Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/

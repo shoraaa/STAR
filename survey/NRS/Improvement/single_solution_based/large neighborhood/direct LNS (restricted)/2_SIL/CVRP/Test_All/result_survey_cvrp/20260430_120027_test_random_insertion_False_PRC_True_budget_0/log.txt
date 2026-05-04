@@ -1,0 +1,13 @@
+[2026-04-30 11:00:28] test_survey.py(151) : DEBUG_MODE: False
+[2026-04-30 11:00:28] test_survey.py(152) : USE_CUDA: True, CUDA_DEVICE_NUM: 0
+[2026-04-30 11:00:28] test_survey.py(153) : env_params{'pomo_size': 1, 'k_nearest': 1, 'beam_width': 16, 'decode_method': 'greedy', 'mode': 'test', 'test_in_vrplib': True, 'vrplib_path': '/home/shora/Research/NRS_Survey/0_data_survey/survey_bench_cvrp', 'data_path': '/home/shora/Research/NRS_Survey/0_data_survey/survey_bench_cvrp', 'load_way': 'allin', 'sub_path': False, 'budget': 0, 'PRC': True, 'repair_max_sub_length': 1000, 'random_insertion': False}
+[2026-04-30 11:00:28] test_survey.py(153) : model_params{'mode': 'test', 'embedding_dim': 128, 'sqrt_embedding_dim': 11.313708498984761, 'decoder_layer_num': 6, 'qkv_dim': 16, 'head_num': 8, 'logit_clipping': 10, 'ff_hidden_dim': 512, 'eval_type': 'argmax', 'use_k_nearest': False, 'k_nearest_num': 1000}
+[2026-04-30 11:00:28] test_survey.py(153) : tester_params{'use_cuda': True, 'cuda_device_num': 0, 'model_load': {'path': './result/checkpoint-cvrp1k.pt'}, 'test_episodes': 1, 'test_batch_size': 1, 'augmentation_enable': False, 'aug_factor': 1, 'aug_batch_size': 100}
+[2026-04-30 11:00:28] test_survey.py(153) : logger_params{'log_file': {'desc': 'test_random_insertion_False_PRC_True_budget_0', 'filename': 'log.txt', 'filepath': './result_survey_cvrp/20260430_120027_test_random_insertion_False_PRC_True_budget_0'}}
+[2026-04-30 11:00:28] Tester.py(469) : Episode   1/  1 done.Instance: X-n101-k25, size: 100, opt: 27591.000, student: 66749.000, gap: 141.923%, time: 0.820s
+[2026-04-30 11:00:28] Tester.py(495) : ################ Bucket Summary (gap%% / time s) ################
+[2026-04-30 11:00:28] Tester.py(500) : Bucket [0, 1000): count=1, avg_gap=141.923% avg_time=0.820s
+[2026-04-30 11:00:28] Tester.py(503) : Bucket [1000, 10000): count=0
+[2026-04-30 11:00:28] Tester.py(503) : Bucket [10000, 100001): count=0
+[2026-04-30 11:00:28] Tester.py(506) : ################ Overall ################
+[2026-04-30 11:00:28] Tester.py(507) : All solved instances: 1/1, Overall avg gap: 141.923%

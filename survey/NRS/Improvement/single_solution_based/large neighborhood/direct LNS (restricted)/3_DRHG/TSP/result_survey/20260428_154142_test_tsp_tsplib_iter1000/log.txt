@@ -1,0 +1,7 @@
+[2026-04-28 14:41:42] test_survey.py(165) : use model ./result/finetuned, epoch 120
+[2026-04-28 14:41:42] test_survey.py(167) : DEBUG_MODE: True
+[2026-04-28 14:41:42] test_survey.py(168) : USE_CUDA: True, CUDA_DEVICE_NUM: 0
+[2026-04-28 14:41:42] test_survey.py(169) : env_params{'mode': 'test', 'use_model': 'DRHG', 'load_way': 'tsplib', 'test_in_tsplib': True, 'data_path': None}
+[2026-04-28 14:41:42] test_survey.py(169) : model_params{'mode': 'test', 'embedding_dim': 128, 'sqrt_embedding_dim': 11.313708498984761, 'encoder_layer_num': 6, 'qkv_dim': 16, 'head_num': 8, 'logit_clipping': 1, 'ff_hidden_dim': 512, 'eval_type': 'argmax'}
+[2026-04-28 14:41:42] test_survey.py(169) : tester_params{'use_cuda': True, 'cuda_device_num': 0, 'model_load': {'path': './result/finetuned', 'epoch': 120}, 'destroy_mode': ['knn-location'], 'destroy_params': {'knn-location': {'center_type': 'equally', 'knn_k': [20, 1000]}}, 'iter_budget': 1000, 'coordinate_transform': True}
+[2026-04-28 14:41:42] test_survey.py(169) : logger_params{'log_file': {'desc': 'test_tsp_tsplib_iter1000', 'filename': 'log.txt', 'filepath': './result_survey/20260428_154142_test_tsp_tsplib_iter1000'}}
