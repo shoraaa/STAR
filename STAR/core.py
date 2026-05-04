@@ -19,6 +19,7 @@ import sys
 import time
 import weakref
 from contextlib import contextmanager
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -5158,8 +5159,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def has_out_dir_arg(argv: Sequence[str]) -> bool:
+    return any(arg == "--out-dir" or arg.startswith("--out-dir=") for arg in argv)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if not has_out_dir_arg(raw_argv):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        args.out_dir = Path("results") / timestamp
     rows = run_matrix(
         args.strategies,
         args.policies,

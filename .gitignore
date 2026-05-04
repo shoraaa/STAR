@@ -34,6 +34,11 @@ output/
 
 # Data (large files, download separately)
 survey/0_data_survey/**
+!survey/0_data_survey/
+!survey/0_data_survey/survey_bench_opt_tsp_same_file_name.py
+!survey/0_data_survey/survey_bench_tsp/
+!survey/0_data_survey/survey_bench_tsp/**
+!survey/0_data_survey/survey_bench_tsp/**/
 !survey/0_data_survey/survey_bench_cvrp/
 !survey/0_data_survey/survey_bench_cvrp/**
 !survey/0_data_survey/survey_bench_cvrp/**/

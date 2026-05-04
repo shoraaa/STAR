@@ -32,7 +32,7 @@ if __name__ == "__main__":
 
     # Auto-name with timestamp if out-dir was not explicitly set.
     if not has_out_dir_arg(sys.argv[1:]):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         out_dir = Path("results") / timestamp
 
     out_dir.mkdir(parents=True, exist_ok=True)
