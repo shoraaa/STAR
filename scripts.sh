@@ -53,14 +53,6 @@ run_star "table1-medium-main" \
   --min-new-edges 8 \
   --out-dir results/medium-main
 
-run_star "table1-large-main" \
-  STAR sil tsp,cvrp \
-  --size large \
-  --iterations 100 \
-  --STAR-samples 100 \
-  --min-new-edges 4 \
-  --out-dir results/large-main
-
 run_star "table2-small-sampling" \
   STAR sil tsp,cvrp \
   --size small \
@@ -195,6 +187,14 @@ for k in 8 16 32 64 128; do
     --refine-k "${k}" \
     --out-dir "results/sens/k-${k}"
 done
+
+run_star "table1-large-main" \
+  STAR sil tsp,cvrp \
+  --size large \
+  --iterations 100 \
+  --STAR-samples 100 \
+  --min-new-edges 4 \
+  --out-dir results/large-main
 
 for backbone in nearest sil lehd; do
   run_star "table7-backbone-${backbone}-small" \
