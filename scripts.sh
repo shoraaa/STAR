@@ -38,7 +38,7 @@ run_star() {
 }
 
 run_star "table1-small-main" \
-  STAR sil cvrp \
+  STAR sil tsp,cvrp \
   --size small \
   --iterations 100 \
   --STAR-samples 100 \
@@ -46,7 +46,7 @@ run_star "table1-small-main" \
   --out-dir results/small-main
 
 run_star "table1-medium-main" \
-  STAR sil cvrp \
+  STAR sil tsp,cvrp \
   --size medium \
   --iterations 100 \
   --STAR-samples 100 \
@@ -54,7 +54,7 @@ run_star "table1-medium-main" \
   --out-dir results/medium-main
 
 run_star "table1-large-main" \
-  STAR sil cvrp \
+  STAR sil tsp,cvrp \
   --size large \
   --iterations 100 \
   --STAR-samples 100 \
@@ -62,7 +62,7 @@ run_star "table1-large-main" \
   --out-dir results/large-main
 
 run_star "table2-small-sampling" \
-  STAR sil cvrp \
+  STAR sil tsp,cvrp \
   --size small \
   --iterations 100 \
   --STAR-samples 100 \
@@ -71,7 +71,7 @@ run_star "table2-small-sampling" \
   --out-dir results/small-sampling
 
 run_star "table2-medium-sampling" \
-  STAR sil cvrp \
+  STAR sil tsp,cvrp \
   --size medium \
   --iterations 100 \
   --STAR-samples 100 \
@@ -80,7 +80,7 @@ run_star "table2-medium-sampling" \
   --out-dir results/medium-sampling
 
 run_star "table2-small-recon" \
-  STAR sil cvrp \
+  STAR sil tsp,cvrp \
   --size small \
   --iterations 100 \
   --STAR-samples 100 \
@@ -90,7 +90,7 @@ run_star "table2-small-recon" \
   --out-dir results/small-recon
 
 run_star "table2-medium-recon" \
-  STAR sil cvrp \
+  STAR sil tsp,cvrp \
   --size medium \
   --iterations 100 \
   --STAR-samples 100 \
@@ -101,7 +101,7 @@ run_star "table2-medium-recon" \
 
 for it in 10 20 40 60 100; do
   run_star "fig1-medium-star-${it}" \
-    STAR sil cvrp \
+    STAR sil tsp,cvrp \
     --size medium \
     --iterations "${it}" \
     --STAR-samples 100 \
@@ -111,7 +111,7 @@ done
 
 for it in 10 20 40 60 100; do
   run_star "fig1-medium-nomem-${it}" \
-    STAR sil cvrp \
+    STAR sil tsp,cvrp \
     --size medium \
     --iterations "${it}" \
     --STAR-samples 100 \
@@ -121,7 +121,7 @@ for it in 10 20 40 60 100; do
 done
 
 run_star "table3-ablation-full" \
-  STAR sil cvrp \
+  STAR sil tsp,cvrp \
   --size small \
   --iterations 100 \
   --STAR-samples 100 \
@@ -129,7 +129,7 @@ run_star "table3-ablation-full" \
   --out-dir results/ablation/full
 
 run_star "table3-ablation-no-memory" \
-  STAR sil cvrp \
+  STAR sil tsp,cvrp \
   --size small \
   --iterations 100 \
   --STAR-samples 100 \
@@ -138,7 +138,7 @@ run_star "table3-ablation-no-memory" \
   --out-dir results/ablation/no-memory
 
 run_star "table3-ablation-no-refinement" \
-  STAR sil cvrp \
+  STAR sil tsp,cvrp \
   --size small \
   --iterations 100 \
   --STAR-samples 100 \
@@ -147,7 +147,7 @@ run_star "table3-ablation-no-refinement" \
   --out-dir results/ablation/no-refinement
 
 run_star "table4-memory-source" \
-  STAR sil cvrp \
+  STAR sil tsp,cvrp \
   --size small \
   --iterations 100 \
   --STAR-samples 100 \
@@ -156,7 +156,7 @@ run_star "table4-memory-source" \
   --out-dir results/memory/source
 
 run_star "table4-memory-source-adv" \
-  STAR sil cvrp \
+  STAR sil tsp,cvrp \
   --size small \
   --iterations 100 \
   --STAR-samples 100 \
@@ -166,7 +166,7 @@ run_star "table4-memory-source-adv" \
 
 for scale in 0 0.25 0.5 1.0 2.0 4.0; do
   run_star "table5-memory-scale-${scale}" \
-    STAR sil cvrp \
+    STAR sil tsp,cvrp \
     --size small \
     --iterations 100 \
     --STAR-samples 100 \
@@ -177,7 +177,7 @@ done
 
 for r in 4 8 16 24 32 64; do
   run_star "fig3-sens-r-${r}" \
-    STAR sil cvrp \
+    STAR sil tsp,cvrp \
     --size small \
     --iterations 100 \
     --STAR-samples 100 \
@@ -187,7 +187,7 @@ done
 
 for k in 8 16 32 64 128; do
   run_star "fig3-sens-k-${k}" \
-    STAR sil cvrp \
+    STAR sil tsp,cvrp \
     --size small \
     --iterations 100 \
     --STAR-samples 100 \
@@ -198,7 +198,7 @@ done
 
 for backbone in nearest sil lehd; do
   run_star "table7-backbone-${backbone}-small" \
-    STAR "${backbone}" cvrp \
+    STAR "${backbone}" tsp,cvrp \
     --size small \
     --iterations 100 \
     --STAR-samples 100 \
@@ -206,7 +206,7 @@ for backbone in nearest sil lehd; do
     --out-dir "results/backbone/${backbone}/small"
 
   run_star "table8-backbone-${backbone}-medium" \
-    STAR "${backbone}" cvrp \
+    STAR "${backbone}" tsp,cvrp \
     --size medium \
     --iterations 100 \
     --STAR-samples 100 \
