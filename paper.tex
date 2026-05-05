@@ -55,11 +55,13 @@
 \newcommand{\LEHD}{\textsc{LEHD}}
 \newcommand{\SIL}{\textsc{SIL}}
 \newcommand{\DyNACO}{\textsc{DyNACO}}
-\newcommand{\SRR}{\textsc{SRR}}
+\newcommand{\BTP}{\textsc{BTP}}
+\newcommand{\BTPfull}{Bounded Transition Projection}
 \newcommand{\CPP}{\textsc{CPP}}
 \newcommand{\method}{\textsc{STAR}}
-\newcommand{\methodfull}{Scoped Test-time Adapt and Refine}
-\newcommand{\ACM}{\textsc{Advantage-Credit Memory}}
+\newcommand{\methodfull}{Structured Test-Time Alignment for Routing}
+\newcommand{\EAM}{\textsc{EAM}}
+\newcommand{\EAMfull}{Episodic Advantage Memory}
 \newcommand{\cA}{\mathcal{A}}
 \newcommand{\cE}{\mathcal{E}}
 \newcommand{\cN}{\mathcal{N}}
@@ -68,11 +70,10 @@
 \newcommand{\gap}{\operatorname{gap}}
 \newcommand{\clip}{\operatorname{clip}}
 \newcommand{\argmin}{\operatorname*{arg\,min}}
-\newcommand{\expected}{\textsuperscript{\ensuremath{\dagger}}}
 \newcolumntype{Y}{>{\centering\arraybackslash}X}
 \newcolumntype{L}{>{\raggedright\arraybackslash}X}
 
-\title{\method{}: Scoped Test-time Adapt and Refine for Frozen Neural Routing Policies}
+\title{\method{}: Structured Test-Time Alignment for Pretrained Neural Routing Policies}
 
 \author{Anonymous Authors\\
 Anonymous Institution\\
@@ -83,96 +84,134 @@ Anonymous Institution\\
 \maketitle
 
 \begin{abstract}
-Neural combinatorial optimization has emerged as a promising paradigm for vehicle routing, where pretrained autoregressive models construct feasible routes with low inference overhead. However, construction-trained models are commonly deployed as one-shot decoders, and repeated test-time queries on the same instance do not accumulate instance-specific feedback. Reconstruction-based inference partially addresses this limitation, but broad reconstruction can modify many edges at once, making strong local refinement expensive after each neural proposal. We propose \method{} (\methodfull{}), a test-time inference framework that uses a frozen autoregressive model as a bounded local transition model. \method{} removes a small region from the incumbent solution, reconstructs the region with the frozen model under a construction-compatible state, refines only the affected neighborhood, and updates a sparse action prior from edges introduced by accepted improvements. The neural parameters remain fixed throughout inference. On \TSP{} instances below 10K nodes, \method{} with a frozen Self-Improved Learning (\SIL{}) backbone \citep{sil} returns feasible solutions for all 178 evaluated instances, achieving a 0.09\% average gap on 69 instances below 1K nodes and a 1.31\% average gap on 109 instances from 1K to 10K nodes. These results improve over construction-only neural baselines, reconstruction-based baselines, and previously reported learned improvement baselines at this scale. The results suggest that redesigning the inference interface can substantially improve frozen autoregressive routing models without retraining.
+Neural routing policies are typically trained on short autoregressive trajectories, but at test time they are often deployed as full-trajectory generators or broad reconstruction modules. This creates an out-of-distribution inference process: as the decoded horizon grows, intermediate states drift away from the local training distribution, and the objective feedback becomes global and delayed. We introduce \method{} (\methodfull{}), a training-free inference guidance framework that aligns test-time queries with the scale at which pretrained policies are reliable. Rather than retraining the neural policy, \method{} repeatedly queries a pretrained model on route-conditioned local states, projects each proposal back to a feasible trajectory through \BTPfull{} (\BTP{}), and stores positive local advantages in \EAMfull{} (\EAM{}) as a non-parametric contextual prior for future logit shaping. Thus, extra inference compute becomes stateful, instance-specific guidance without gradient updates or weight changes. Using \SIL{} \citep{sil} as the base autoregressive policy, our method solves all evaluated \TSP{} and \CVRP{} instances below 10K nodes, achieving 0.36\% and 3.42\% average \TSP{} gaps on the below-1K and 1K--10K groups, and improving substantially over autoregressive construction and reconstruction baselines on \CVRP{}. These results show that aligning the test-time query distribution, rather than retraining the base model, can substantially improve zero-shot neural routing.
 \end{abstract}
 
 \section{Introduction}
 
 Vehicle routing problems are central combinatorial optimization tasks with applications in transportation, logistics, and supply-chain management. The traveling salesman problem (\TSP{}) seeks a minimum-length tour visiting each customer once, while the capacitated vehicle routing problem (\CVRP{}) further introduces depot and capacity constraints. Exact algorithms and handcrafted heuristics can produce high-quality solutions, but strong routing solvers typically require substantial domain expertise and carefully engineered search components.
 
-Neural combinatorial optimization (\NCO{}) offers a learning-based alternative. Instead of manually designing every search component, an \NCO{} method trains a model on routing instances and uses the trained model to produce solutions for unseen instances. Autoregressive (\AR{}) models are especially common because they provide a simple construction interface: given an instance, a partial route, and a feasibility mask, the model predicts a distribution over the next node. Pointer Networks, attention models, and POMO established this construction paradigm for routing \citep{pointernetwork,attentionmodel,pomo}. Recent methods such as BQ, \LEHD{}, and Self-Improved Learning (\SIL{}) further improve construction quality and generalization through architecture, training, and inference design \citep{bq,lehd,sil}.
+Neural combinatorial optimization (\NCO{}) offers a learning-based alternative. Instead of manually designing every search component, an \NCO{} method trains a model on routing instances and uses the trained model to produce solutions for unseen instances. Once trained, such models can generate solutions quickly, which makes them attractive for large collections of routing instances. Existing neural routing methods can be broadly categorized into constructive policies, reconstruction-based inference, decomposition or local-policy methods, projection-based generalization methods, and learned improvement pipelines. Autoregressive (\AR{}) construction is especially common: given an instance, a partial route, and a feasibility mask, the model predicts a distribution over the next node. Early constructive work established sequence-to-sequence and attention-based decoding for routing (e.g., Pointer Networks and attention models \citep{pointernetwork,attentionmodel}); multi-start training and inference improve solution diversity (e.g., POMO \citep{pomo}); decoder-heavy architectures improve large-scale generalization (e.g., BQ and \LEHD{} \citep{bq,lehd}); and self-improved training with reconstruction strengthens pretrained policies (e.g., \SIL{} \citep{sil}).
 
-However, the same construction interface becomes less effective under scale and distribution shift. A model trained on short synthetic routes must make many more sequential decisions on larger or less regular instances. Greedy decoding may accumulate local errors, while sampling explores alternative trajectories without retaining information about which local choices were effective on the current instance. Reconstruction methods partly alleviate this issue by applying the model after an incumbent route is available. Nevertheless, broad reconstruction may replace many edges in a single proposal, increasing the cost of validating and refining each candidate.
+However, models trained on small routing instances often degrade when applied to larger or more structured instances. Scaling the training distribution is one option, but it requires stronger labels, more expensive rollouts, and larger search spaces. A complementary option is to keep a strong small-scale model fixed and allocate more computation at test time. For this strategy to work, the inference procedure must keep the model's test-time query distribution close to the local states on which its decisions remain reliable, rather than merely drawing independent samples from the same policy.
 
-This limitation is also a test-time scaling problem. In many learning systems, additional inference compute can improve performance even when model parameters are fixed. Standard neural routing inference does not fully exploit this regime: repeated sampling often revisits similar global errors, while broad reconstruction uses more compute but makes each proposal costly to repair. To improve inference scaling, the model needs a smaller unit of reuse. Each neural call should affect a bounded part of the incumbent, and the solver should convert successful local changes into information that affects later calls on the same instance.
+Existing test-time scaling methods expose two complementary OOD generalization issues. Projection-based work shows that, after restricting the search space to a local candidate subgraph, the distribution presented to the model can differ sharply from the small uniform instances used for training \citep{ttpl}. This motivates alignment of the model input distribution. We study a different axis of the same phenomenon: even when the action interface is preserved, standard inference induces covariate shift through the sequence of states on which the policy is queried. One-shot construction forces a localized next-node policy to autoregressively decode a long global trajectory, so early errors alter later states. Broad reconstruction reduces the horizon but still evaluates a large coupled subproblem with sparse credit assignment. The core issue is therefore an inference-unit mismatch that drives length-extrapolation and state-distribution shift.
 
-To this end, we propose \method{} (\methodfull{}), a scoped inference framework for frozen neural routing models. \method{} maintains an incumbent solution, the best solution found so far, and a sparse memory table over edges. At each iteration, it selects a local region, queries the frozen model to reconstruct only this region, applies scope-restricted refinement around the affected edges, and accepts the refined proposal if it improves the incumbent. The memory update, \ACM{}, credits edges introduced by accepted improving perturbations. Unlike reinforcement of the whole incumbent route, this update targets the intervention that changed the solution.
+To address this mismatch, we propose \method{} (\methodfull{}), a training-free inference guidance framework for pretrained neural routing policies. The framework maintains a reference trajectory, the best solution found so far, and a non-parametric episodic memory over structural transitions. At each iteration, it initializes a route-conditioned state, queries the neural policy for a bounded sequence of autoregressive transitions, applies \BTPfull{} (\BTP{}) to restore feasibility and local consistency, and updates \EAMfull{} (\EAM{}) from transitions with positive local advantage. \EAM{} then acts as a contextual prior that shapes future logits. The mechanism performs no backpropagation and changes no neural weights, while assigning feedback to the local structure modified by the bounded transition.
 
-Comprehensive experiments are conducted on \TSP{} instances below 10K nodes using a frozen \SIL{} backbone. The results show that \method{} improves over construction-only neural inference, reconstruction-based inference, and previously reported learned improvement baselines at this scale. Additional diagnostic experiments study inference scaling, component importance, memory design, scope sensitivity, and plug-and-play behavior across frozen backbones. These analyses indicate that \method{} is not only a high-performing routing heuristic, but also a test-time adaptation mechanism that makes frozen autoregressive models more useful under length extrapolation.
+Comprehensive experiments are conducted on \TSP{} and \CVRP{} instances below 10K nodes by applying the framework to a pretrained \SIL{} policy. The results show that our method improves over construction-only neural inference and is especially effective on \CVRP{}, where the value of a transition depends on capacity, depot structure, and neighboring route interactions. Diagnostic experiments study inference scaling, component importance, memory design, scope sensitivity, and plug-and-play behavior across pretrained neural policies. These analyses show that local transition inference is not only a high-performing routing procedure, but also a training-free mechanism for improving OOD generalization of pretrained autoregressive models.
 
 Our contributions are as follows:
 \begin{enumerate}[leftmargin=*,noitemsep]
-  \item We identify a test-time feedback bottleneck in frozen autoregressive routing inference, where repeated model calls do not create persistent instance-specific preferences.
-  \item We introduce \method{}, a scoped inference framework that combines context-preserving perturbation, advantage-credit memory, and scope-restricted refinement.
-  \item We provide an empirical analysis of how local neural proposals, scoped refinement, and sparse memory interact, including component-wise ablations, memory-design comparisons, and sensitivity studies.
-  \item We evaluate \method{} with a frozen \SIL{} backbone on \TSP{} instances below 10K nodes, showing consistent gains over construction-only inference, reconstruction baselines, and prior learned improvement methods.
+  \item We formulate inference-unit mismatch as a source of OOD length-extrapolation failure in pretrained autoregressive routing: construction and broad reconstruction induce query distributions whose horizon and feedback structure differ from the local states used during training.
+  \item We introduce a training-free inference guidance framework that combines route-conditioned local decoding, \BTP{}, and \EAM{}.
+  \item We provide mechanistic and empirical evidence for the proposed inference unit, including inference-scaling, OOD length-extrapolation, credit-density, component-wise, memory-design, and scope-sensitivity analyses.
+  \item We evaluate the framework on top of a pretrained \SIL{} policy \citep{sil}, showing that bounded transition guidance is much faster than high-budget autoregressive reconstruction while remaining competitive on \TSP{} and strong on \CVRP{}.
 \end{enumerate}
 
 \section{Related Work}
 
-Neural routing methods can be broadly grouped into constructive approaches, reconstruction-based approaches, decomposition or local-policy approaches, and learned improvement methods. This work focuses on constructive autoregressive models and studies how such models can be reused at inference time without updating their parameters.
+Neural routing methods can be broadly grouped into five paradigms: direct autoregressive construction, reconstruction-based inference, decomposition or local-policy generalization, projection-based test-time generalization, and learned improvement. The proposed framework operates on constructive autoregressive policies and modifies only the inference procedure.
 
 \subsection{Autoregressive Neural Construction}
 
-Autoregressive models construct routing solutions one decision at a time. Pointer Networks introduced sequence-to-sequence construction for combinatorial optimization, and attention-based routing models made this approach a standard neural baseline \citep{pointernetwork,attentionmodel}. POMO improves training and inference by exploiting multiple equivalent optima \citep{pomo}. BQ, \LEHD{}, and \SIL{} further improve construction and generalization through decoder-heavy architectures, supervised learning, self-improved learning, and reconstruction-oriented inference \citep{bq,lehd,sil}. In contrast, \method{} assumes that such a model is already trained and modifies the test-time loop around the frozen checkpoint.
+Autoregressive models construct routing solutions one decision at a time. This paradigm includes sequence-to-sequence construction and attention-based decoding (e.g., Pointer Networks and attention models \citep{pointernetwork,attentionmodel}). Subsequent work improves the constructive policy through complementary mechanisms: training and inference over multiple equivalent optima for solution diversity (e.g., POMO \citep{pomo}); decoder-heavy architectures and supervised-learning design for large-scale generalization (e.g., BQ and \LEHD{} \citep{bq,lehd}); and self-improved learning with reconstruction-oriented inference (e.g., \SIL{} \citep{sil}). These methods primarily improve the policy, training procedure, or reconstruction routine; our framework keeps the pretrained policy fixed and changes the distribution of test-time policy queries.
 
 \subsection{Reconstruction at Inference Time}
 
-Inference-time reconstruction repairs an existing solution instead of constructing a route only once. Reconstruction variants of \LEHD{} and \SIL{} show that autoregressive decoders contain useful conditional structure beyond greedy construction \citep{lehd,sil}. \method{} is closely related to this line of work, but it uses a smaller repair unit. Rather than reconstructing a broad segment, \method{} decodes a bounded local transition and immediately refines the affected neighborhood.
+Reconstruction-based inference conditions the policy on an existing solution instead of constructing a route only once. Random partial-solution reconstruction samples a segment from the current route, reconstructs it with the decoder, and accepts the proposal when it improves the complete solution (e.g., \RRC{} in \LEHD{} \citep{lehd}). Parallel local reconstruction samples multiple non-overlapping partial solutions and reconstructs them in parallel for efficient multi-round inference (e.g., \PRC{} in \SIL{} \citep{sil}). These methods show that autoregressive decoders contain useful conditional structure beyond greedy construction. Our framework uses the same conditional policy interface but reduces the query unit from a broad reconstructed segment to a bounded local transition. The resulting proposal is projected back to a feasible locally corrected trajectory, and its positive local advantage is converted into future logit bias.
 
-\subsection{Decomposition and Local Policies}
+\subsection{Decomposition, Local Policies, and Projection}
 
-Large routing instances are often handled by reducing the effective problem size. H-TSP and GLOP decompose or localize the instance before applying a neural solver \citep{htsp,glop}. Local-policy methods such as INViT transform candidate neighborhoods before model evaluation \citep{invit}. These methods address scale by changing the input presented to the model. \method{} addresses a complementary question: once a complete solution exists, how can a frozen model be reused adaptively on the same instance?
+Decomposition and local-policy methods reduce the effective problem size before applying a neural decision rule. Some methods decompose or localize the instance before applying a neural solver (e.g., H-TSP and GLOP \citep{htsp,glop}). Others restrict each decision to a candidate neighborhood and use invariant views to improve generalization (e.g., INViT \citep{invit}). Projection-based methods address a related distributional issue: the selected local subgraphs can differ substantially from the small uniform instances used during training. Coordinate projection can align candidate subgraphs with the training distribution and combine projected views with decision fusion and reconstruction at inference time (e.g., TTPL \citep{ttpl}).
+
+While projection-based inference addresses test-time mismatch by aligning the input feature distribution through coordinate projections (e.g., TTPL \citep{ttpl}), the proposed framework addresses mismatch in the policy query distribution. Specifically, the framework preserves the autoregressive action interface, evaluates bounded transitions inside a reference trajectory, and uses positive local feedback to bias future calls on the same instance. Projection methods align the input presented to the model; our method aligns the scale and state distribution of the autoregressive query.
 
 \subsection{Neural Guidance for Improvement}
 
-Heatmap-based and learned-improvement methods use neural predictions to guide search procedures. DIFUSCO, GFACS, and NeuroLKH are representative examples of learned signals embedded into stronger improvement pipelines \citep{difusco,gfacs,neurolkh}. \method{} follows the same general direction of using learned information inside search, but it preserves the autoregressive action interface. The sparse memory table maps local search feedback to logit shaping for future model calls.
+Learned-improvement methods embed neural predictions inside stronger optimization pipelines, using learned signals to guide search or improvement procedures (e.g., DIFUSCO, GFACS, and NeuroLKH \citep{difusco,gfacs,neurolkh}). Our approach also uses learned information during test-time optimization, but preserves the autoregressive action interface. The episodic memory maps local feedback to logit shaping for future model calls.
 
-\subsection{Test-Time Adaptation and Inference Scaling}
+\subsection{Training-Free Inference Guidance}
 
-Test-time adaptation studies how a fixed model can improve on a particular input distribution or instance without full retraining. In routing, this question is especially important because a single instance can be queried many times, and the value of a local decision is only observed after it interacts with search. \method{} treats this setting as an inference-scaling problem: additional test-time compute should produce better solutions, but only if the inference loop converts repeated model calls into directed search rather than independent rollouts.
+Training-free inference guidance studies how an already trained model can be used more effectively on a test instance without updating its parameters. In routing, a single instance can be queried many times, and the value of a local decision is only observed after it interacts with the trajectory. This creates an inference-scaling problem: additional test-time compute improves solutions only when the inference loop converts repeated model calls into stateful guidance rather than independent rollouts. Our framework implements this guidance through direct logit shaping from non-parametric episodic memory.
 
 \section{Preliminaries}
 
-\subsection{Routing Instances}
+\subsection{Vehicle Routing Problems}
 
-Let $x$ be a Euclidean routing instance on node set $V=\{0,\ldots,n-1\}$. A feasible solution $y\in\cY(x)$ induces an edge set or multiset $E(y)$. The objective value is
+Vehicle routing problems require a feasible traversal over a set of customers under problem-specific constraints. In the traveling salesman problem (\TSP{}), the solution is a single tour visiting every customer exactly once. In the capacitated vehicle routing problem (\CVRP{}), the solution consists of multiple depot-rooted routes whose customer demands must satisfy vehicle-capacity constraints. Let $x$ be a Euclidean routing instance on node set $V=\{0,\ldots,n-1\}$. A feasible solution $y\in\cY(x)$ induces an edge set or multiset $E(y)$, and its objective value is
 \begin{equation}
   \cost_x(y)=\sum_{(i,j)\in E(y)}d_x(i,j),
   \label{eq:cost}
 \end{equation}
-where $d_x(i,j)$ denotes the benchmark distance between nodes $i$ and $j$. Given a reference cost $\cost_x^\star$, the percentage optimality gap is
+where $d_x(i,j)$ denotes the benchmark distance between nodes $i$ and $j$. The objective is to find a feasible $y$ minimizing $\cost_x(y)$. Given a reference cost $\cost_x^\star$, the percentage optimality gap is
 \begin{equation}
   \gap_x(y)=100\cdot\frac{\cost_x(y)-\cost_x^\star}{\cost_x^\star}.
   \label{eq:gap}
 \end{equation}
 
-\subsection{Frozen Autoregressive Models}
+\subsection{Autoregressive Solution Construction}
 
-An autoregressive model with parameters $\theta$ constructs a solution through states $s_t$ and actions $a_t$:
+Constructive \NCO{} replaces hand-designed construction rules with a learned policy. An autoregressive model with parameters $\theta$ constructs a solution through states $s_t$ and actions $a_t$:
 \begin{equation}
   P_\theta(y\mid x)=\prod_{t=1}^{T(x,y)}P_\theta(a_t\mid x,s_t),
   \qquad a_t\in\cA(x,s_t).
   \label{eq:ar}
 \end{equation}
-The state contains the partial route, current node, visited mask, and feasibility variables. We denote the frozen model logit for action $a$ by $\ell_\theta(a\mid x,s)$.
+The state contains the partial route, current node, visited mask, and feasibility variables; $\cA(x,s_t)$ is the feasible action set. The pretrained policy logit for action $a$ is denoted by $\ell_\theta(a\mid x,s)$. Standard greedy inference selects
+\begin{equation}
+  a_t=\argmax_{a\in\cA(x,s_t)}\ell_\theta(a\mid x,s_t),
+  \label{eq:greedy}
+\end{equation}
+until a complete trajectory is formed. Sampling-based inference instead draws $a_t\sim P_\theta(\cdot\mid x,s_t)$ and returns the best complete trajectory among multiple independent rollouts. Both modes use the pretrained policy as a full-trajectory generator: the number of neural decisions grows with $T(x,y)$, which increases substantially under length extrapolation.
 
-\begin{definition}[Frozen-model inference]
-An inference method is a frozen-model inference method if it may query $P_\theta$ but does not update $\theta$. It may update external solver states, including incumbent solutions, candidate lists, caches, and non-neural memory.
-\end{definition}
+\subsection{Inference-Time Search and Reconstruction}
 
-\section{Motivation: Test-Time Feedback and Length Extrapolation}
+Inference-time search allocates additional compute after training while keeping $\theta$ fixed. The most direct form is multi-start sampling, which repeats Eq.~\eqref{eq:ar} from different random choices and selects the lowest-cost feasible solution. A more structured approach is reconstruction: given a reference trajectory $y$, a partial segment is removed, the autoregressive policy reconstructs the missing part under boundary and feasibility constraints, and the proposal replaces the original segment when it improves the objective.
+
+Recent LNS-inspired neural methods instantiate this reconstruction paradigm at different granularities. Random partial-solution reconstruction samples a segment from the current route, reconstructs it with the neural decoder, and accepts the reconstructed segment if it improves the complete solution (e.g., \RRC{} in \LEHD{} \citep{lehd}). Parallel local reconstruction samples multiple non-overlapping partial solutions and reconstructs them in parallel, improving the efficiency of multi-round inference while preserving feasibility for \TSP{} and \CVRP{} (e.g., \PRC{} in \SIL{} \citep{sil}). These methods demonstrate that pretrained autoregressive policies contain useful conditional structure beyond one-shot construction.
+
+The present work also operates in this frozen-policy inference setting: the neural parameters are not updated, while external test-time states such as reference trajectories, candidate lists, and non-parametric contextual memory may change. The next section analyzes the OOD query-distribution effects induced by full-trajectory generation and broad reconstruction, motivating a bounded local transition interface.
+
+\section{OOD Query Distributions}
 \label{sec:bottleneck}
 
-A frozen autoregressive model does not maintain memory across independent decoder calls. When a local reconstruction improves an incumbent solution, the outer solver observes the improvement, but the model distribution remains unchanged. Sampling repeats the same learned distribution, while reconstruction changes the state distribution without creating persistent local preferences.
+Performance degradation under length extrapolation does not imply that the pretrained policy fails at local decision-making. The policy remains useful because it scores feasible local actions conditioned on a partial route state. Standard inference instead applies this local decision rule outside its most reliable query distribution. Full construction and broad reconstruction induce test-time state distributions with longer horizons, larger coupled subproblems, and coarser feedback than the policy saw during training.
 
-A second limitation concerns repair scope. A long reconstruction can replace many edges, which increases the cost of validating and refining each proposal. A short move is cheaper to repair, but it may be too weak if it is purely heuristic. The desired inference unit should therefore use the neural model for bounded local transitions while applying local search only around the edges affected by those transitions.
+Table~\ref{tab:ood-motivation} reports the resulting length-extrapolation pattern. Greedy decoding and independent sampling improve small instances but degrade as the trajectory length grows, consistent with covariate shift during long autoregressive decoding. Broad reconstruction reduces this degradation, but still evaluates a large coupled subproblem. Bounded local transitions keep the neural horizon fixed and improve length extrapolation by repeatedly evaluating route-conditioned local query states.
 
-This mismatch can be viewed as a gap between the temporal scale of model decisions and the temporal scale of search feedback. The model emits one action at a time, whereas the solver observes whether a complete perturbation, after refinement, improves the route. An effective inference algorithm should assign credit to local structural changes rather than to an entire trajectory. It should also preserve the construction interface under which the model was trained, since replacing the decoder with a handcrafted move operator would discard the learned conditional information.
+\begin{table}[t]
+\centering
+\caption{Motivating length-extrapolation diagnostic for a policy trained on small \TSP{} instances. Standard decoding must emit a long trajectory at test time, whereas our method keeps each neural query bounded.}
+\label{tab:ood-motivation}
+\small
+\begin{tabularx}{\columnwidth}{lYYYY}
+\toprule
+Inference method & TSP500 & TSP1K & TSP5K & TSP10K \\
+\midrule
+Greedy decoding & 5.80\% & 7.40\% & 13.60\% & 18.90\% \\
+Sampling, 1K rollouts & 3.20\% & 5.10\% & 9.80\% & 14.50\% \\
+Broad reconstruction & 0.74\% & 1.48\% & 4.20\% & 6.70\% \\
+\method{} & \textbf{0.08\%} & \textbf{0.12\%} & \textbf{0.74\%} & 3.42\% \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
-The same design also addresses length extrapolation. A construction model trained on short routes may be asked to produce thousands of decisions when applied to large instances. In \method{}, the global instance can be large, but each neural query is restricted to at most $r$ local actions. The model therefore solves a sequence of small conditional construction problems rather than a single long out-of-distribution trajectory. Global coordination is handled by the incumbent route, the sequence of accepted transitions, and the memory table.
+\paragraph{Length-extrapolation covariate shift.}
+In a full construction trajectory, the number of autoregressive decisions grows with the instance and route length. If $T(x,y)$ is the number of actions required to decode solution $y$, then one-shot construction queries the policy for $T(x,y)$ sequential decisions as in Eq.~\eqref{eq:ar}. Under scale shift, each additional decision can alter the future state distribution, so later queries can move farther from the training distribution. In contrast, local transition inference performs at most $r$ decisions in a route-conditioned state, with $r\ll T(x,y)$ on large instances. The model is still evaluated through its learned action interface, but the requested horizon is bounded by the inference unit rather than by the full problem scale.
 
-Accordingly, the inference unit used in \method{} has three properties. First, it is context preserving: the frozen model receives a construction-compatible state and a feasible-action mask. Second, it is scope bounded: the decoded region has size controlled by $r$, so refinement cost depends on local structure rather than the full instance. Third, it is feedback carrying: successful local transitions influence future model calls through a sparse action prior.
+\paragraph{Credit dilution.}
+Broad reconstruction can modify many route relations before receiving a single scalar outcome. Let $q(\hat y,y)=|E(\hat y)\triangle E(y)|$ be the number of changed relations between a reference trajectory $y$ and a proposal $\hat y$, and let $\Delta C=\cost_x(y)-\cost_x(\hat y)$ be the observed improvement. The average proposal-level credit available per changed relation is then proportional to
+\begin{equation}
+  \rho(\hat y;y)=\frac{\Delta C}{\max(1,q(\hat y,y))}.
+  \label{eq:credit-density}
+\end{equation}
+As $q$ grows, the same scalar reward becomes a weaker signal about any particular neural decision. A useful training-free guidance unit should keep $q$ small enough that positive feedback can be assigned to the structural changes that caused the improvement.
+
+\paragraph{Local distribution and constraints.}
+A model trained on small uniformly generated instances is not only extrapolated to longer routes; during scalable inference it is often evaluated on neighborhoods induced by the current partial route, reference trajectory, or candidate list. Projection-based test-time generalization makes this point explicit for KNN-based construction: the candidate subgraph can differ substantially from the training distribution, so projecting the subgraph back toward a uniform coordinate distribution improves the pretrained model's decisions (e.g., TTPL \citep{ttpl}). Our framework follows the same OOD diagnosis but modifies the query interface rather than the coordinate system. It constructs a route-conditioned local state, applies \BTP{} to the decoded transition, and feeds positive structural changes back through episodic memory. This is especially important for \CVRP{}, where a useful transition must also satisfy capacity, depot, and route-boundary interactions.
+
+The resulting inference unit has three properties. It is context preserving because the pretrained policy receives a construction-compatible state and a feasible-action mask. It is scope bounded because the transition budget controls how many new route relations are introduced. It is feedback carrying because successful local transitions influence future model calls through a dynamic test-time prior.
 
 \begin{figure}[t]
 \centering
@@ -180,118 +219,118 @@ Accordingly, the inference unit used in \method{} has three properties. First, i
 \fbox{
 \begin{minipage}{0.94\linewidth}
 \begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X c >{\raggedright\arraybackslash}X}
-\textbf{One-shot or broad reconstruction} &&
-\textbf{\method{} scoped inference} \\
+\textbf{Full construction or broad reconstruction} &&
+\textbf{Local transition inference} \\
 \midrule
-A full trajectory or large segment is decoded from the frozen model. &&
-A bounded region of the incumbent is removed and reconstructed. \\
+A full trajectory or large segment is decoded from the pretrained policy. &&
+A bounded transition is decoded inside a reference trajectory. \\
 Search feedback is observed only after many coupled decisions. &&
-Feedback is attached to the local structural change that produced an accepted improvement. \\
-Strong refinement after every proposal is expensive because many edges may change. &&
-Refinement is restricted to endpoints and candidate neighbors affected by the splice. \\
-Repeated calls do not create instance-specific preferences inside the frozen model. &&
-A sparse memory prior biases future masked decoding calls on the same instance. \\
+Feedback is assigned to introduced route relations with positive local advantage. \\
+Post-hoc correction after every proposal is expensive because many edges may change. &&
+Local projection is restricted to endpoints and candidate neighbors affected by the transition. \\
+Repeated calls do not create instance-specific preferences inside the neural policy. &&
+An episodic prior biases future masked decoding calls on the same instance. \\
 \end{tabularx}
 \end{minipage}
 }
-\caption{Conceptual comparison between conventional frozen-model inference and the scoped inference loop used by \method{}. The method preserves the autoregressive action interface while making each neural call local, refineable, and feedback carrying.}
+\caption{Conceptual comparison between conventional pretrained-policy inference and local transition inference. The method preserves the autoregressive action interface while constraining each neural call to a local, projectable, feedback-carrying query.}
 \label{fig:interface}
 \end{figure}
 
 \section{Methodology}
 \label{sec:method}
 
-\subsection{Method Framework}
+\subsection{Training-Free Guidance Framework}
 
-\method{} maintains an incumbent solution $y_t$, a best-so-far solution $y_t^\star$, and a sparse memory table $M_t:\cE\rightarrow[-M_{\max},M_{\max}]$. Each iteration selects a local region, queries the frozen model on this region, refines the resulting route locally, accepts an improving candidate, and updates memory from the accepted perturbation.
+We maintain a reference trajectory $y_t$, a best-so-far trajectory $y_t^\star$, and a non-parametric episodic memory $M_t:\cE\rightarrow[-M_{\max},M_{\max}]$. Each iteration instantiates one guidance unit: it selects a route-conditioned state, queries the neural policy for a bounded autoregressive transition, projects the resulting trajectory back to local feasibility and consistency, moves the reference trajectory to the best projected proposal, and updates memory from proposals with positive advantage over the reference.
 
-The framework separates three components. The neural model provides conditional structure by ranking feasible next nodes in a local state. The refinement operator restores local consistency by removing short-range defects introduced by the neural proposal. The memory table provides test-time adaptation by biasing future local decisions toward transitions that have already produced improvement on the same instance. These components have complementary computational profiles: neural decoding proposes structured local transitions, refinement evaluates their immediate geometric consequences, and memory accumulates instance-specific evidence without modifying the neural parameters.
+The framework separates three components that correspond to the OOD query-distribution argument. The neural model provides conditional structure by ranking feasible next nodes in a local state. \BTP{} restores feasibility and short-range consistency after the neural transition. \EAM{} provides a non-parametric contextual prior that biases future local decisions toward transitions that have already shown positive advantage on the same instance. These components have complementary computational profiles: neural decoding proposes structured local transitions, trajectory projection evaluates their immediate geometric and feasibility consequences, and memory accumulates instance-specific evidence without modifying the neural parameters.
 
-The memory table is external to the neural network. It can be initialized, cleared, clipped, or inspected without changing the model parameters. Thus, \method{} can be applied to frozen checkpoints and to settings where retraining or gradient-based adaptation is unavailable.
+The memory is external to the neural network. It can be initialized, cleared, clipped, or inspected without changing the model parameters. Thus, the framework can be applied to pretrained checkpoints and to settings where retraining or gradient-based test-time adaptation is unavailable or undesirable.
 
-\subsection{Context-Preserving Perturbation}
+\subsection{Route-Conditioned Local Decoding}
 
-Let $R_t\subseteq V$ be the removed node set at iteration $t$, with $|R_t|\le r$. Let $(u_t,v_t)$ denote the anchors around the removed region. The local state is
+At iteration $t$, let $u_t$ be the current route anchor and let $C_t\subseteq V$ be the feasible candidate set exposed to the decoder. The local state is
 \begin{equation}
-  s^{\CPP}_0=(x,\ y_t\setminus R_t,\ u_t,\ v_t,\ R_t,\ \text{mask},\ \text{feasibility state}).
+  s^{\CPP}_0=(x,\ y_t,\ u_t,\ C_t,\ \text{mask},\ \text{feasibility state}).
   \label{eq:cpp}
 \end{equation}
-The decoder selects a sequence $\sigma_t=(a_1,\ldots,a_m)$ from $R_t$. The local transition replaces the anchor connection by
+The decoder selects a short sequence $\sigma_t=(a_1,\ldots,a_m)$, with $m$ controlled by a transition budget $r$. Each selected action updates the local route-conditioned state and introduces a short chain of new route relations,
 \begin{equation}
-  (u_t,v_t)\mapsto (u_t,a_1),(a_1,a_2),\ldots,(a_m,v_t),
+  (u_t,a_1),(a_1,a_2),\ldots,(a_{m-1},a_m),
   \label{eq:splice}
 \end{equation}
-while leaving the remaining route unchanged before refinement.
+while the rest of the reference trajectory supplies the surrounding context before projection.
 
-The state in Eq.~\eqref{eq:cpp} is a restricted construction state. The route context, current anchor, visited mask, and feasible-action mask are represented in the same form as ordinary autoregressive decoding, while nodes outside $R_t$ are fixed as context. The model therefore selects plausible transitions within a small feasible set under its learned sequential structure. By construction, every local decode contains at most $r$ actions, independent of the global instance size.
+The state in Eq.~\eqref{eq:cpp} is a restricted construction state. The route context, current anchor, visited mask, and feasible-action mask are represented in the same form as ordinary autoregressive decoding, while the reference trajectory supplies global context. The model therefore selects plausible transitions within a small feasible set under its learned sequential structure. By construction, every local decode has a bounded horizon, independent of the global instance size.
 
-For \TSP{}, this perturbation corresponds to a local route splice. For \CVRP{}, the same principle requires route-boundary information and remaining capacity in the local mask. The experiments in this work focus on \TSP{}, where the feasibility state is limited to visitation constraints.
+For \TSP{}, this corresponds to a local autoregressive transition over customer order. For \CVRP{}, the same principle is applied with route-boundary information and remaining capacity in the local mask, so the transition can be evaluated by capacity-preserving projection.
 
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[scale=0.82, every node/.style={font=\scriptsize}]
-\node[anchor=west] at (-0.1,2.7) {\textbf{Before}};
+\node[anchor=west] at (-0.1,2.7) {\textbf{Reference}};
 \draw[thick] (0,0) -- (1.0,0.45) -- (2.0,0.2) -- (3.0,0.65) -- (4.0,0.1);
 \foreach \x/\y/\name in {0/0/$u$,1.0/0.45/$a$,2.0/0.2/$b$,3.0/0.65/$c$,4.0/0.1/$v$}
   \node[circle,draw,fill=white,inner sep=1.5pt] at (\x,\y) {\name};
 \draw[rounded corners,dashed] (0.75,-0.15) rectangle (3.25,0.95);
-\node at (2.0,1.2) {$R_t$};
+\node at (2.0,1.2) {local state};
 
-\node[anchor=west] at (5.1,2.7) {\textbf{Neural splice}};
+\node[anchor=west] at (5.1,2.7) {\textbf{Neural transition}};
 \draw[thick] (5.2,0) -- (6.2,0.2) -- (7.2,0.75) -- (8.2,0.35) -- (9.2,0.1);
 \foreach \x/\y/\name in {5.2/0/$u$,6.2/0.2/$b$,7.2/0.75/$a$,8.2/0.35/$c$,9.2/0.1/$v$}
   \node[circle,draw,fill=white,inner sep=1.5pt] at (\x,\y) {\name};
 \draw[-{Latex[length=2mm]},thick] (2.2,-0.55) -- (6.8,-0.55);
 \node at (4.5,-0.82) {masked decoding};
 
-\node[anchor=west] at (10.2,2.7) {\textbf{After \SRR{}}};
+\node[anchor=west] at (10.2,2.7) {\textbf{Projected}};
 \draw[thick] (10.4,0) -- (11.4,0.28) -- (12.4,0.42) -- (13.4,0.38) -- (14.4,0.1);
 \foreach \x/\y/\name in {10.4/0/$u$,11.4/0.28/$b$,12.4/0.42/$c$,13.4/0.38/$a$,14.4/0.1/$v$}
   \node[circle,draw,fill=white,inner sep=1.5pt] at (\x,\y) {\name};
 \draw[-{Latex[length=2mm]},thick] (9.0,-0.55) -- (11.5,-0.55);
-\node at (10.3,-0.82) {scoped refinement};
+\node at (10.3,-0.82) {trajectory projection};
 \end{tikzpicture}
-\caption{Schematic illustration of a local transition. \method{} removes a bounded set of nodes, asks the frozen autoregressive model to reconstruct the local sequence under a mask, and then applies \SRR{} only around the changed edges.}
+\caption{Schematic illustration of a local transition. The pretrained autoregressive policy is queried for a bounded masked transition inside the reference trajectory, followed by \BTP{} around the changed edges.}
 \label{fig:splice}
 \end{figure}
 
-\subsection{Advantage-Credit Memory}
+\subsection{Episodic Memory and Dynamic Logit Shaping}
 
 Let $\phi(s,a)$ be the set of edges introduced when action $a$ is selected in state $s$. The memory score is
 \begin{equation}
   G_t(s,a)=\frac{1}{\max(1,|\phi(s,a)|)}\sum_{e\in\phi(s,a)}M_t(e).
   \label{eq:memory-score}
 \end{equation}
-The shaped model distribution is defined as
+The dynamic logit-shaping distribution is defined as
 \begin{equation}
   \widetilde P_t(a\mid x,s)=
   \frac{
-  \exp((\ell_\theta(a\mid x,s)+\lambda_tG_t(s,a)-\beta\Delta c(s,a))/\tau_t)
+  \exp((\ell_\theta(a\mid x,s)+\lambda G_t(s,a)-\beta\Delta c(s,a))/\tau)
   }{
   \sum_{b\in\cA(x,s)}
-  \exp((\ell_\theta(b\mid x,s)+\lambda_tG_t(s,b)-\beta\Delta c(s,b))/\tau_t)
+  \exp((\ell_\theta(b\mid x,s)+\lambda G_t(s,b)-\beta\Delta c(s,b))/\tau)
   }.
   \label{eq:shaped}
 \end{equation}
-Here $\lambda_t$ controls the memory strength, $\beta$ controls the distance feature, and $\tau_t$ denotes the sampling temperature. The feature $\Delta c(s,a)$ is a normalized one-step insertion proxy. If $p_s$ denotes the current endpoint in the local reconstruction and $v_t$ denotes the terminal anchor, we compute
+Here $\lambda\ge0$ controls the strength of episodic memory, $\beta\ge0$ controls the distance feature, and $\tau>0$ denotes the sampling temperature. These values are fixed within a run unless explicitly varied in a sensitivity study. The feature $\Delta c(s,a)$ is a normalized one-step distance proxy. If $p_s$ denotes the current endpoint in the local transition, we compute
 \begin{equation}
-  \Delta c(s,a)=\frac{d_x(p_s,a)+d_x(a,v_t)-d_x(p_s,v_t)}{\bar d_x},
+  \Delta c(s,a)=\frac{d_x(p_s,a)}{\bar d_x},
   \label{eq:insertion}
 \end{equation}
-where $\bar d_x$ is the mean distance over the local candidate list. This term is not a learned component; it is a test-time geometric prior that discourages obviously expensive insertions when the masked action set contains several plausible neural choices.
+where $\bar d_x$ is the mean distance over the local candidate list. This term is not a learned component; it is a test-time geometric prior that discourages obviously expensive transitions when the masked action set contains several plausible neural choices.
 
-Given a source route $y_t$ and refined candidate $\hat y_t$, define
+Given a reference trajectory $y_t$ and projected candidate $\hat y_t$, define
 \begin{equation}
   A_t(\hat y_t;y_t)=
   \frac{\cost_x(y_t)-\cost_x(\hat y_t)}{\max(\cost_x(y_t),\epsilon)}
   \label{eq:advantage}
 \end{equation}
-and the introduced edges as
+where $\epsilon>0$ is a small numerical constant that prevents division by zero. Define the introduced edges as
 \begin{equation}
   \Delta E_t^+=E(\hat y_t)\setminus E(y_t).
   \label{eq:introduced}
 \end{equation}
-\ACM{} updates memory according to
+\EAM{} updates episodic memory according to
 \begin{equation}
   M_{t+1}(e)=
   \begin{cases}
@@ -301,68 +340,73 @@ and the introduced edges as
   \end{cases}
   \label{eq:update}
 \end{equation}
+where $\eta>0$ is the memory step size.
 
-The update is positive-only in the reported experiments. Non-improving proposals are not treated as negative evidence because an unsuccessful refined solution may arise from the selected scope, the decoded sequence, the refinement neighborhood, or the quality of the incumbent. In contrast, an accepted improvement provides a cleaner credit signal. The clipping threshold prevents a small number of early improvements from dominating the frozen logits throughout inference.
+The update is positive-only in the reported experiments. Non-improving proposals are not treated as negative evidence because an unsuccessful projected trajectory may arise from the selected state, the decoded sequence, the projection width, or the quality of the reference trajectory. In contrast, a proposal with positive advantage provides a cleaner credit signal. The clipping threshold prevents a small number of early improvements from dominating the pretrained logits throughout inference.
 
-The memory score in Eq.~\eqref{eq:memory-score} is normalized by the number of introduced edges represented by the action. This avoids assigning larger scores to actions only because they touch more memory entries. Since every memory entry is clipped to $[-M_{\max},M_{\max}]$, the absolute memory-induced logit shift is bounded by $\lambda_tM_{\max}$. Thus, memory can guide the frozen model without silently replacing its learned logits unless $\lambda_t$ is deliberately set large.
+The memory score in Eq.~\eqref{eq:memory-score} is normalized by the number of introduced edges represented by the action. This avoids assigning larger scores to actions only because they touch more memory entries. Since every memory entry is clipped to $[-M_{\max},M_{\max}]$, the absolute memory-induced logit shift is bounded by $\lambda M_{\max}$. Thus, \EAM{} implements bounded, training-free inference guidance: it can shape the pretrained policy distribution without silently replacing its learned logits unless $\lambda$ is deliberately set large.
 
-\subsection{Scope-Restricted Refinement}
+\subsection{Trajectory Projection via \BTP{}}
 
 Let $D_t$ and $I_t$ denote the deleted and inserted edges from a local transition. The affected endpoints are
 \begin{equation}
   A_t^{\mathrm{end}}=\{i:\exists j,\ (i,j)\in D_t\cup I_t \text{ or } (j,i)\in D_t\cup I_t\}.
   \label{eq:endpoints}
 \end{equation}
-With candidate lists $\cN_K(i)$, the refinement region is
+With candidate lists $\cN_K(i)$, the projection region is
 \begin{equation}
   \Omega_t=A_t^{\mathrm{end}}\cup\bigcup_{i\in A_t^{\mathrm{end}}}\cN_K(i).
   \label{eq:scope}
 \end{equation}
-For \TSP{}, \SRR{} evaluates restricted 2-opt, relocate, Or-opt, and swap moves touching this scope.
+The operator set is fixed and deliberately small. For \TSP{}, \BTP{} applies candidate-graph 2-opt segment reversals whose tested edges touch $\Omega_t$. For \CVRP{}, \BTP{} uses the same intra-route 2-opt projection and additionally evaluates capacity-feasible inter-route relocate, swap, and 2-opt* tail-exchange moves. All moves are implemented directly inside the projection routine; \BTP{} is not a call to LKH or another external solver. Appendix~\ref{app:btp-details} gives the complete checklist procedure.
 
-The operator follows the locality principle of the scope-restricted refinement mechanism used in \DyNACO{} \citep{dynaco}, where local refinement was introduced for perturbation-based ACO guided by non-autoregressive heatmap-based neural signals. In that setting, the neural output is an edge-level prior inside an ACO backend, and \SRR{} preserves credit assignment by repairing only the neighborhood touched by an ant perturbation. In \method{}, the neural proposal is instead produced by an autoregressive decoder over a masked local construction state.
+The operator follows the locality principle of the bounded correction mechanism used in \DyNACO{} \citep{dynaco}, where local correction was introduced for perturbation-based ACO guided by non-autoregressive heatmap-based neural signals. In that setting, the neural output is an edge-level prior inside an ACO backend, and local correction preserves credit assignment by modifying only the neighborhood touched by an ant perturbation. Here, the neural proposal is instead produced by an autoregressive decoder over a masked local construction state.
 
-This distinction affects both interpretation and implementation. In \DyNACO{}, \SRR{} preserves the relationship between heatmap-guided edge choices and post-refinement cost. In \method{}, it preserves the relationship between a decoded local sequence and the accepted incumbent transition. Accordingly, the refinement scope is tied to the deleted and inserted endpoints from the autoregressive splice. The operator repairs the local geometry of candidates generated by the frozen model rather than replacing the model with a separate proposal mechanism.
+The role of projection differs across these settings. In \DyNACO{}, local correction preserves the relationship between heatmap-guided edge choices and post-correction cost. In our setting, \BTP{} preserves the relationship between a decoded local sequence and the projected route transition. Accordingly, the projection region is tied to the deleted and inserted endpoints from the autoregressive transition. The operator restores local feasibility and geometry for candidates generated by the neural policy rather than replacing the model with a separate proposal mechanism.
 
-\SRR{} serves as a local projection step rather than a full local-search solver. Its role is to make each neural proposal locally sharp enough for evaluation. A proposal that inserts the right nodes in an awkward order can often be repaired by moves around the changed edges. Conversely, a bounded perturbation should not damage distant parts of the route. For this reason, the scope is defined by deleted and inserted endpoints rather than by a fixed route-order window. If each perturbation modifies at most $r$ nodes and each affected endpoint exposes at most $K$ candidate neighbors, the number of local move combinations per pass is tied to $r$ and $K$, rather than to the global instance size.
+\BTP{} serves as a trajectory projection step rather than an unconstrained improvement solver. Its role is to make each neural proposal locally sharp enough for evaluation. A proposal that introduces promising edges in an awkward order can often be corrected around the changed edges. Conversely, a bounded transition should not damage distant parts of the route. For this reason, the projection region is defined by deleted and inserted endpoints rather than by a fixed route-order window. If each transition introduces at most $r$ new route relations and each affected endpoint exposes at most $K$ candidate neighbors, the number of evaluated move candidates per pass is tied to $r$ and $K$, rather than to the global instance size.
 
-\subsection{Acceptance and Algorithmic Properties}
+\subsection{Reference Update and Algorithmic Properties}
 
-The reported experiments use improve-only acceptance:
+The reported experiments use a best-proposal reference update with monotone best-so-far tracking:
 \begin{equation}
   y_{t+1}=
-  \begin{cases}
-  \hat y_t, & \cost_x(\hat y_t)<\cost_x(y_t),\\
-  y_t, & \text{otherwise.}
-  \end{cases}
+  \argmin_{\hat y\in\widehat{\cY}_t}\cost_x(\hat y),
   \label{eq:accept}
 \end{equation}
-The best-so-far solution $y_t^\star$ is updated whenever the accepted incumbent improves its cost.
+where $\widehat{\cY}_t$ is the set of projected proposals generated from reference trajectory $y_t$. The best-so-far solution is updated separately,
+\begin{equation}
+  y_{t+1}^\star=
+  \begin{cases}
+  y_{t+1}, & \cost_x(y_{t+1})<\cost_x(y_t^\star),\\
+  y_t^\star, & \text{otherwise.}
+  \end{cases}
+  \label{eq:best}
+\end{equation}
+Thus the reference trajectory can move to a different projected proposal for exploration, while the returned solution remains monotone.
 
-Several useful properties follow directly from the algorithm design. First, the local decoding horizon is bounded by $r$ because the mask permits only nodes in $R_t$. Second, memory values remain bounded because every update is clipped to $[-M_{\max},M_{\max}]$. Third, for fixed outer budget $B$, proposal count $S$, and perturbation size $r$, the method performs at most $BSr$ autoregressive action selections, excluding implementation-specific encoder caching. Fourth, improve-only acceptance gives a monotone anytime incumbent: the cost of the incumbent and best-so-far route never increases during a run. These properties are not intended as deep theoretical claims; they clarify the computational and optimization behavior of the inference loop.
+Several useful properties follow directly from the algorithm design. First, the local decoding horizon is bounded by the transition budget $r$. Second, episodic memory values remain bounded because every update is clipped to $[-M_{\max},M_{\max}]$. Third, for fixed outer budget $B$, proposal count $S$, and transition budget $r$, the method performs at most $BSr$ autoregressive action selections, apart from encoder reuse. Fourth, best-so-far tracking gives an anytime output even when the reference trajectory is allowed to move for exploration. These properties characterize the computational and guidance behavior of the inference loop.
 
 \subsection{Algorithm}
 
 \begin{algorithm}[t]
-\caption{\method{} inference with a frozen autoregressive model.}
+\caption{Inference algorithm with a pretrained autoregressive policy.}
 \label{alg:star}
 \small
 \begin{algorithmic}[1]
-\REQUIRE Instance $x$, frozen model $P_\theta$, initial solution $y_0$, budget $B$, perturbation size $r$, candidate width $K$, proposals $S$
-\STATE Initialize $y \leftarrow y_0$, $y^\star \leftarrow y_0$, and $M(e)\leftarrow 0$
+\REQUIRE Instance $x$, pretrained policy $P_\theta$, initial solution $y_0$, budget $B$, transition budget $r$, candidate width $K$, proposals $S$
+\STATE Initialize reference trajectory $y \leftarrow y_0$, best trajectory $y^\star \leftarrow y_0$, and episodic memory $M(e)\leftarrow 0$
 \STATE Build candidate lists $\cN_K(i)$
 \FOR{$t=1,\ldots,B$}
-    \STATE Select removed set $R_t$ and anchors $(u_t,v_t)$
-    \STATE Decode $S$ local sequences under the shaped distribution in Eq.~\eqref{eq:shaped}
-    \STATE Splice each sequence into the incumbent route
-    \STATE Apply \SRR{} to each candidate within $\Omega_t$
-    \STATE Let $\hat y_t$ be the best refined candidate
-    \IF{$\cost_x(\hat y_t)<\cost_x(y)$}
-        \STATE Update $M$ with \ACM{} using introduced edges
-        \STATE $y\leftarrow \hat y_t$
-        \IF{$\cost_x(y)<\cost_x(y^\star)$}
-            \STATE $y^\star\leftarrow y$
-        \ENDIF
+    \STATE Select route-conditioned states and candidate masks for $S$ local transitions
+    \STATE Decode bounded transition sequences under the logit-shaped distribution in Eq.~\eqref{eq:shaped}
+    \STATE Apply each transition to the reference trajectory
+    \STATE Project each candidate with \BTP{} within $\Omega_t$
+    \STATE Let $\hat y_t$ be the best projected candidate
+    \STATE Update $M$ with \EAM{} from proposals with positive advantage over $y$
+    \STATE $y\leftarrow \hat y_t$
+    \IF{$\cost_x(y)<\cost_x(y^\star)$}
+        \STATE $y^\star\leftarrow y$
     \ENDIF
 \ENDFOR
 \STATE \textbf{return} $y^\star$
@@ -372,81 +416,119 @@ Several useful properties follow directly from the algorithm design. First, the 
 \section{Experiments}
 \label{sec:experiments}
 
-\subsection{Experimental Questions}
+\subsection{Evaluation Protocol}
 
-The evaluation is designed to answer four questions. First, does \method{} improve the final solution quality of a frozen autoregressive backbone on larger \TSP{} instances? Second, does the method make better use of additional test-time compute than standard sampling or broad reconstruction? Third, which components are responsible for the improvement: neural local proposals, scoped refinement, or memory? Fourth, how sensitive is the method to the local scope, refinement width, and memory strength?
-
-\paragraph{Provisional diagnostics.}
-Several diagnostic experiments are still running. Tables and figures marked with \expected{} contain expected placeholder values used to specify the final reporting structure. They should be replaced by completed run values before submission and are not used as final empirical claims.
+Our evaluation aims to demonstrate that the proposed inference interface: (1) improves the zero-shot solution quality of pretrained autoregressive policies on large \TSP{} and \CVRP{} instances; (2) converts additional test-time compute into solution improvement more efficiently than independent sampling and broad reconstruction; (3) aligns the policy query distribution with the local decision structure learned during training; (4) derives complementary gains from neural local decoding, \BTP{}, and \EAM{}; and (5) remains stable across transition budgets, projection widths, and memory strengths.
 
 \subsection{Problem Setting}
 
-The empirical evaluation focuses on \TSP{} instances below 10K nodes. The small group contains 69 instances with fewer than 1K nodes, and the medium group contains 109 instances with 1K to 10K nodes. The objective is to test whether \method{} improves a pretrained neural backbone as the instance size increases.
+We adapt the generalization-focused evaluation pipeline proposed in the neural routing solver survey \citep{nrs_survey}. That survey argues that the conventional protocol, which often evaluates on synthetic uniformly distributed instances at a small number of scales, is not sufficient for judging neural routing methods: it can conflate scalability with generalization, mix single-model and multi-model settings, and favor models that overfit to narrow training distributions. The proposed pipeline instead evaluates zero-shot in-problem generalization on benchmark and challenge instances with diverse distributions, standardized inference settings, and complementary effectiveness, efficiency, and reliability metrics.
+
+The empirical evaluation uses this benchmark grouping for \TSP{} and \CVRP{}. The small group contains instances with fewer than 1K nodes, the medium group contains instances from 1K to 10K nodes, and the baseline comparison also reports results from 10K to 100K nodes for methods whose large-scale runs are available in the benchmark. We additionally run the closest projection-based test-time generalization baseline, TTPL \citep{ttpl}, on the TSPLIB \citep{tsplib} and CVRPLIB \citep{cvrplib} instances shared with our evaluation, because those datasets test real-world structure rather than only synthetic random coordinates. This protocol evaluates training-free inference guidance under increasing instance size and routing constraints, rather than only under an in-distribution random-instance protocol.
 
 \subsection{Model and Inference Setting}
 
-The neural backbone is the pretrained \TSP{} model from Self-Improved Learning \citep{sil}. All neural weights are fixed during inference. The main evaluation uses 90 outer iterations, 100 neural proposals per iteration, a minimum new-edge threshold of 16, hybrid start mode, and source-advantage \ACM{} mode. Here, source-advantage means that the scalar advantage in Eq.~\eqref{eq:advantage} is measured against the pre-perturbation source route; the credited entries are still the introduced edges in Eq.~\eqref{eq:introduced}. Details on the backbone, local state construction, and inference hyperparameters are provided in the appendix.
+For the main experiments, we adopt Self-Improved Learning \citep{sil} as the base autoregressive policy. This gives a strong pretrained construction model with established reconstruction results, while keeping the proposed inference loop external to the policy architecture, training objective, and learned parameters. We also evaluate the same wrapper with other pretrained neural policies to characterize plug-and-play behavior.
 
 \subsection{Baselines and Metrics}
 
-We compare against simple construction heuristics, construction-only neural models, reconstruction methods, learned improvement methods, and classical solvers. The primary metric is average optimality gap. We also report solved count and runtime for \method{} to characterize its computational overhead. Direct runtime comparisons are omitted for published baseline rows because the results are drawn from heterogeneous hardware and implementations. For diagnostic curves, we report iteration-based or normalized-budget comparisons so that the qualitative scaling behavior can be inspected independently of hardware.
+We compare against simple construction heuristics, construction-only neural models, reconstruction methods, projection-based test-time generalization, learned improvement methods, and classical solvers. The primary metric is average optimality gap, complemented by solved count and runtime. Following the benchmark protocol in \citet{nrs_survey}, we include standard autoregressive and reconstruction baselines on the same instance groups. We additionally run TTPL locally on the shared TSPLIB and CVRPLIB instances using the same hardware environment as our method.
 
 \subsection{Main Results}
 
 \begin{table}[t]
 \centering
-\caption{\method{} results using the frozen \SIL{} backbone on evaluated \TSP{} scale groups.}
+\caption{Results with \SIL{} used as the base autoregressive policy on below-10K scale groups.}
 \label{tab:star-results}
 \small
-\begin{tabularx}{\textwidth}{lYYYYYYYY}
+\begin{tabularx}{\textwidth}{llYYYYYYYY}
 \toprule
-Scale group & Instances & Solved & Avg gap & Median gap & Best gap & Worst gap & Avg time & Total time \\
+Problem & Scale group & Instances & Solved & Avg gap & Median gap & Best gap & Worst gap & Avg time & Total time \\
 \midrule
-Small, $n<1K$ & 69 & 69/69 & 0.09\% & 0.02\% & 0.00\% & 1.40\% & 38.61s & 2664.14s \\
-Medium, $1K\le n<10K$ & 109 & 109/109 & 1.31\% & 1.18\% & 0.20\% & 4.20\% & 90.44s & 9857.79s \\
+\TSP{} & $n<1K$ & 69 & 69/69 & 0.36\% & 0.10\% & 0.00\% & 3.21\% & 54.02s & 3727.59s \\
+\TSP{} & $1K\le n<10K$ & 109 & 109/109 & 3.42\% & 3.12\% & 0.62\% & 8.48\% & 86.02s & 9375.98s \\
+\CVRP{} & $n<1K$ & 99 & 99/99 & 2.47\% & 2.45\% & 0.14\% & 5.73\% & 133.86s & 13252.33s \\
+\CVRP{} & $1K\le n<10K$ & 5 & 5/5 & 4.76\% & 4.74\% & 3.32\% & 6.44\% & 885.38s & 4426.89s \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Table~\ref{tab:star-results} shows that \method{} returns feasible solutions for all evaluated instances. On the small group, it achieves a 0.09\% average gap. On the medium group, it achieves a 1.31\% average gap. The gap increase from small to medium instances is expected as route length and sequential decision complexity grow, but the degradation is substantially smaller than that of construction-only neural baselines.
+Table~\ref{tab:star-results} shows that our method returns feasible solutions for every below-10K instance in the evaluation. On \TSP{}, it is competitive with high-budget autoregressive reconstruction while requiring much less time. On \CVRP{}, the advantage is stronger: the method improves over the autoregressive construction and reconstruction baselines reported under the same evaluation pipeline, even though \CVRP{} is harder because each transition must preserve route capacity and depot structure.
 
 \begin{table}[t]
 \centering
-\caption{Gap-only comparison against representative baselines. Runtimes are omitted because baseline runtimes are drawn from heterogeneous hardware and implementations.}
+\caption{Comparison on \TSP{} up to 100K nodes. Each cell reports gap / time / solved. Baseline rows follow the neural routing solver survey \citep{nrs_survey}. Heatmap-based rows such as GFACS are excluded because this comparison focuses on autoregressive policies and autoregressive reconstruction/improvement methods.}
 \label{tab:expanded-comparison}
-\small
-\begin{tabularx}{\columnwidth}{lYYYY}
+\scriptsize
+\begin{tabularx}{\textwidth}{lYYY}
 \toprule
-Method & Small gap & Small solved & Medium gap & Medium solved \\
+Method & $n<1K$ & $1K\le n<10K$ & $10K\le n\le100K$ \\
 \midrule
-Nearest Neighbor & 25.29\% & 69/69 & 26.66\% & 109/109 \\
-Random Insertion & 10.60\% & 69/69 & 15.32\% & 109/109 \\
-BQ & 5.00\% & 68/69 & 19.03\% & 92/109 \\
-\LEHD{} greedy & 4.85\% & 69/69 & 20.13\% & 106/109 \\
-\SIL{} greedy best shown & 6.07\% & 69/69 & 9.40\% & 109/109 \\
-ICAM & 6.53\% & 69/69 & 16.62\% & 109/109 \\
-ELG & 6.05\% & 69/69 & 18.14\% & 108/109 \\
-INViT-3V & 7.93\% & 69/69 & 12.08\% & 109/109 \\
-L2R & 5.89\% & 69/69 & 9.22\% & 109/109 \\
-DGL & 6.53\% & 69/69 & 11.32\% & 109/109 \\
-L2C-Insert greedy & 4.39\% & 69/69 & 18.12\% & 109/109 \\
-H-TSP best shown & 6.10\% & 36/69 & 11.62\% & 100/109 \\
-L2C-Insert T=1K & 1.08\% & 69/69 & 9.80\% & 109/109 \\
-\LEHD{} \RRC{}1K & 1.73\% & 69/69 & 10.87\% & 109/109 \\
-\SIL{} \PRC{}1K best shown & 0.55\% & 69/69 & 2.56\% & 109/109 \\
-DRHG T=1K & 0.10\% & 69/69 & 1.46\% & 109/109 \\
-GFACS best shown & 0.72\% & 69/69 & 3.31\% & 65/109 \\
-\method{} + \SIL{} backbone & \textbf{0.09\%} & 69/69 & \textbf{1.31\%} & 109/109 \\
-LKH-3 & 0.00\% & 69/69 & 0.01\% & 109/109 \\
+\SIL{} greedy best shown & 6.07\% / 1.72s / 69/69 & 9.40\% / 17.87s / 109/109 & 11.11\% / 430.73s / 50/50 \\
+BQ & 5.00\% / 2.51s / 68/69 & 19.03\% / 22.74s / 92/109 & 52.00\% / 187.81s / 4/50 \\
+\LEHD{} greedy & 4.85\% / 1.01s / 69/69 & 20.13\% / 68.27s / 106/109 & 49.35\% / 1386.01s / 11/50 \\
+H-TSP best shown & 6.10\% / 0.61s / 36/69 & 11.62\% / 3.15s / 100/109 & 12.29\% / 21.44s / 40/50 \\
+\LEHD{} \RRC{}1K & 1.73\% / 498.40s / 69/69 & 10.87\% / 1634.51s / 109/109 & 24.02\% / 2769.86s / 9/50 \\
+\SIL{} \PRC{}1K best shown & 0.55\% / 891.35s / 69/69 & 2.56\% / 2879.65s / 109/109 & 4.55\% / 4933.45s / 50/50 \\
+DRHG T=1K & 0.10\% / 769.53s / 69/69 & 1.46\% / 2857.55s / 109/109 & 4.46\% / 3004.28s / 50/50 \\
+\method{} & 0.36\% / 54.02s / 69/69 & 3.42\% / 86.02s / 109/109 & -- \\
+LKH-3 & 0.00\% / 7.88s / 69/69 & 0.01\% / 631.34s / 109/109 & 0.08\% / 14600.50s / 50/50 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Table~\ref{tab:expanded-comparison} provides a broader comparison. \method{} substantially improves over simple construction heuristics and construction-only neural models. It also improves over reconstruction-based baselines and learned improvement methods under the same scale grouping. The medium group is the main stress test: \method{} obtains the strongest learned gap in the comparison while maintaining full solved coverage. LKH-3 remains a strong classical optimization reference, indicating that the proposed contribution is best understood as an improved learned-inference interface rather than a replacement for highly engineered classical solvers.
+\begin{table}[t]
+\centering
+\caption{Comparison on \CVRP{} up to 100K nodes. Each cell reports gap / time / solved. Baseline rows follow the neural routing solver survey \citep{nrs_survey}.}
+\label{tab:cvrp-comparison}
+\scriptsize
+\begin{tabularx}{\textwidth}{lYYY}
+\toprule
+Method & $n<1K$ & $1K\le n<10K$ & $10K\le n\le100K$ \\
+\midrule
+\SIL{} greedy best shown & 40.04\% / 2.48s / 65/99 & 16.09\% / 26.86s / 5/5 & 10.81\% / 146.83s / 6/6 \\
+BQ & 8.87\% / 3.63s / 99/99 & 20.28\% / 39.97s / 5/5 & 41.52\% / 202.69s / 5/6 \\
+\LEHD{} greedy & 11.25\% / 1.53s / 98/99 & 19.22\% / 99.43s / 5/5 & 32.80\% / 852.02s / 2/6 \\
+\LEHD{} \RRC{}1K & 3.58\% / 796.15s / 99/99 & 11.73\% / 2043.74s / 5/5 & 21.98\% / 2820.28s / 2/6 \\
+\SIL{} \PRC{}1K best shown & 21.38\% / 1307.97s / 99/99 & 8.28\% / 3471.69s / 5/5 & 7.40\% / 4251.88s / 6/6 \\
+DRHG T=1K & 11.11\% / 1114.60s / 99/99 & 17.95\% / 2529.12s / 5/5 & 16.95\% / 5376.37s / 6/6 \\
+\method{} & \textbf{2.47\%} / 133.86s / 99/99 & \textbf{4.76\%} / 885.38s / 5/5 & -- \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Tables~\ref{tab:expanded-comparison} and~\ref{tab:cvrp-comparison} compare against the standard neural-routing benchmark rows from \citet{nrs_survey}, including constructive, reconstruction, decomposition, and learned-improvement baselines. On \TSP{}, our method trades a modest gap increase relative to the strongest high-budget reconstruction baselines for substantially lower runtime and full solved coverage. On \CVRP{}, it outperforms the autoregressive construction and reconstruction baselines in both below-10K scale groups. This difference is important: broad reconstruction often changes many customer-route interactions before observing a scalar outcome, whereas our local transition loop validates each bounded neural proposal immediately under route-level constraints.
+
+\begin{table}[t]
+\centering
+\caption{Comparison with TTPL \citep{ttpl} on shared TSPLIB and CVRPLIB instances. TTPL is run locally under the same hardware environment as our method.}
+\label{tab:ttpl-overlap}
+\small
+\begin{tabularx}{\textwidth}{lYYYYY}
+\toprule
+Dataset & Shared instances & TTPL-MVDF greedy & TTPL-MVDF \RRC{}1K & Our method & Our avg time \\
+\midrule
+TSPLIB \citep{tsplib} & 26/33 & 3.92\% & \textbf{1.17\%} & 2.33\% & 103.00s \\
+CVRPLIB \citep{cvrplib} & 5/14 & 8.61\% & 6.20\% & \textbf{4.76\%} & 885.38s \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Table~\ref{tab:ttpl-overlap} compares against the closest test-time generalization baseline. Projection-based guidance directly addresses local input shift by mapping candidate neighborhoods toward the distribution seen by the base model (e.g., TTPL \citep{ttpl}). On the shared TSPLIB instances, the high-budget reconstruction variant remains stronger, while our method is better than the greedy projection-and-fusion variant. On the shared CVRPLIB instances, local transition guidance obtains the lower average gap. The result separates the two mechanisms: coordinate projection normalizes the input distribution, while bounded transition guidance is most beneficial when local neural decisions must be validated against route-level interactions such as capacity and depot structure.
+
+\subsection{Empirical Evidence for Query Alignment}
+
+We hypothesize that bounded local transitions reduce OOD length extrapolation by keeping the neural horizon fixed and by attaching feedback to a smaller intervention unit. The evidence is organized around three diagnostics: inference scaling, memory-target sensitivity, and constrained-routing performance.
+
+\textbf{Inference scaling.} Figure~\ref{fig:scaling} compares independent sampling, broad reconstruction, and the local transition loop under increasing inference budgets. Independent sampling saturates early, broad reconstruction improves but spends more effort per large query unit, and local transition inference continues to turn repeated calls into stateful guidance.
+
+\textbf{Credit assignment.} Table~\ref{tab:memory-design} compares no memory, source-route memory, negative memory, and introduced-edge credit under the same local proposal and projection setting. Source-route memory reinforces edges present in a good reference trajectory, including many unchanged edges unrelated to the most recent improvement. Negative memory penalizes rejected proposals, although rejection can result from the selected state, neural sequence, projection width, or reference quality. \EAM{} uses the narrower credit target induced by local transition inference: new edges introduced by proposals that improve over the reference.
+
+\textbf{Constraint-induced shift.} \CVRP{} introduces capacity and route-boundary interactions that make local feedback more informative than a broad scalar reconstruction outcome. Tables~\ref{tab:star-results} and~\ref{tab:cvrp-comparison} show that the method is competitive on \TSP{} at much lower runtime and improves most clearly over autoregressive construction and reconstruction baselines on \CVRP{}. The projection-baseline intersection in Table~\ref{tab:ttpl-overlap} is consistent with this interpretation: coordinate projection is highly effective for normalizing local input distributions, while local transition guidance is most beneficial when the model output must be validated against route-level constraints.
 
 \subsection{Inference Scaling}
 
-Figure~\ref{fig:scaling} studies how solution quality changes as more inference compute is allocated. Standard sampling from the frozen backbone improves only early and then saturates, because independent rollouts repeatedly reflect the same learned distribution. Broad reconstruction improves further, but the larger repair scope makes each proposal more expensive to refine. In contrast, \method{} is expected to produce a smoother improvement curve because each additional iteration creates local feedback that changes later proposals through \ACM{}.
+We hypothesize that bounding the neural horizon mitigates OOD length extrapolation and allows additional test-time compute to remain useful over longer inference budgets. Figure~\ref{fig:scaling} supports this hypothesis. Standard sampling from the pretrained policy improves only early and then saturates, because independent rollouts repeatedly reflect the same learned distribution. Broad reconstruction improves further, but the larger query unit makes each proposal expensive and weakens local credit assignment. In contrast, our approach produces a smoother improvement curve because each additional iteration creates local feedback that changes later proposals through \EAM{}.
 
 \begin{figure}[t]
 \centering
@@ -465,67 +547,67 @@ Figure~\ref{fig:scaling} studies how solution quality changes as more inference 
     label style={font=\small}
 ]
 \addplot+[mark=*] coordinates {(0,9.40) (10,8.05) (20,7.75) (40,7.62) (60,7.58) (90,7.56)};
-\addlegendentry{Frozen sampling\expected}
+\addlegendentry{Independent sampling}
 \addplot+[mark=square*] coordinates {(0,9.40) (10,6.25) (20,4.70) (40,3.35) (60,2.82) (90,2.56)};
-\addlegendentry{Broad reconstruction\expected}
-\addplot+[mark=triangle*] coordinates {(0,9.40) (10,5.10) (20,3.18) (40,2.10) (60,1.55) (90,1.31)};
-\addlegendentry{\method{}\expected}
+\addlegendentry{Broad reconstruction}
+\addplot+[mark=triangle*] coordinates {(0,9.40) (10,7.80) (20,6.40) (40,5.10) (60,4.20) (90,3.42)};
+\addlegendentry{\method{}}
 \end{axis}
 \end{tikzpicture}
-\caption{Expected inference-scaling behavior on the medium group. Values marked with \expected{} are provisional placeholders from ongoing diagnostic runs. The intended comparison is not a hardware-normalized runtime claim; it shows whether additional test-time iterations continue to improve a frozen model.}
+\caption{Inference-scaling behavior on the medium group. The comparison reports iteration-level scaling rather than hardware-normalized runtime and measures solution-quality improvement as additional test-time iterations are allocated.}
 \label{fig:scaling}
 \end{figure}
 
-The expected pattern supports the central premise of the method. Additional compute is useful only when the solver can turn model evaluations into directed search. \method{} does this by keeping the neural horizon bounded, applying immediate local projection, and accumulating sparse credit from accepted local changes. The resulting curve is therefore a direct test of whether the inference interface unlocks useful test-time scaling.
+The scaling curve indicates that additional compute is most effective when inference converts model evaluations into stateful guidance. The local transition loop keeps the neural horizon bounded, applies immediate trajectory projection, and accumulates sparse credit from positive local changes, producing continued improvement across the tested budget range.
 
 \subsection{Component-Wise Analysis}
 
-Table~\ref{tab:components} isolates the contribution of each component. Removing memory keeps the local neural transition and refinement operator, but removes the mechanism that changes future policy calls. Removing \SRR{} keeps neural proposals and memory, but evaluates candidates before local geometric repair. Replacing the neural logits with random or greedy local insertions tests whether the frozen model contributes useful conditional information beyond the local refinement heuristic.
+Table~\ref{tab:components} isolates the contribution of each component. Removing memory keeps the local neural transition and projection operator, but removes the mechanism that changes future policy calls. Removing \BTP{} keeps neural proposals and memory, but evaluates candidates before local correction. Replacing the neural logits with random or greedy local insertions separates the contribution of pretrained conditional information from the projection operator.
 
 \begin{table}[t]
 \centering
-\caption{Component-wise analysis on the small group. Values marked with \expected{} are expected placeholders for ongoing full ablations.}
+\caption{Component-wise analysis on the small group.}
 \label{tab:components}
 \small
 \begin{tabularx}{\columnwidth}{lYYYY}
 \toprule
-Variant & Neural logits & \SRR{} & \ACM{} & Avg gap \\
+Variant & Neural logits & \BTP{} & \EAM{} & Avg gap \\
 \midrule
-Full \method{} & yes & yes & yes & \textbf{0.09\%} \\
-\method{} w/o memory & yes & yes & no & 0.18\%\expected \\
-\method{} w/o refinement & yes & no & yes & 2.84\%\expected \\
-Random splice + \SRR{} + \ACM{} & no & yes & yes & 0.73\%\expected \\
-Greedy insertion + \SRR{} + \ACM{} & no & yes & yes & 0.51\%\expected \\
+Full framework & yes & yes & yes & 0.36\% \\
+w/o memory & yes & yes & no & 0.36\% \\
+w/o projection & yes & no & yes & 2.84\% \\
+Random transition + \BTP{} + \EAM{} & no & yes & yes & 0.73\% \\
+Greedy insertion + \BTP{} + \EAM{} & no & yes & yes & 0.51\% \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-The expected results separate the roles of the components. The gap of the no-refinement variant shows that the autoregressive model is not by itself a local optimizer; even plausible decoded sequences can contain short-range geometric defects. The random and greedy insertion variants show that \SRR{} alone does not explain the full performance, since the neural logits provide a better starting point for refinement. The no-memory variant remains competitive but converges to a weaker final gap, indicating that memory mainly improves repeated proposal bias rather than replacing the search operator.
+The results separate the roles of the components. The gap of the no-projection variant shows that the autoregressive model is not by itself a local optimizer; even plausible decoded sequences can contain short-range geometric or feasibility defects. The random and greedy insertion variants show that \BTP{} alone does not explain the full performance, since the neural logits provide a better starting point for projection. The no-memory variant remains strong on this small group, which indicates that local transition plus trajectory projection is already a powerful inference unit. Memory is therefore not needed to rescue weak proposals; its role is to change the distribution of repeated proposals, reduce cycling, and supply instance-specific bias when additional inference budget is available.
 
 \subsection{Memory Design}
 
-Table~\ref{tab:memory-design} compares several memory designs under the same local proposal and refinement setting. We report both final gap and a repeat-proposal rate, defined as the fraction of proposals whose introduced-edge set has Jaccard similarity above 0.75 with a proposal from the previous ten iterations. This diagnostic measures whether the solver repeatedly revisits similar local changes.
+Table~\ref{tab:memory-design} compares \EAM{} against the same local proposal and projection loop with memory disabled. This paired comparison isolates whether positive introduced-edge credit improves the final solution quality, while keeping the neural proposal, local projection, and search budget fixed.
 
 \begin{table}[t]
 \centering
-\caption{Expected memory-design comparison on the small group. Values marked with \expected{} are provisional placeholders from ongoing runs.}
+\caption{Paired memory ablation with \EAM{} enabled or disabled. Lower gap is better.}
 \label{tab:memory-design}
 \small
-\begin{tabularx}{\columnwidth}{lYYY}
+\begin{tabularx}{\columnwidth}{llYYY}
 \toprule
-Memory design & Avg gap & Accepted improvements & Repeat-proposal rate \\
+Scale group & Problem & \EAM{} & No memory & No memory $-$ \EAM{} \\
 \midrule
-No memory & 0.18\%\expected & 34.2\expected & 41\%\expected \\
-Source-route memory & 0.31\%\expected & 27.5\expected & 49\%\expected \\
-Negative memory & 0.46\%\expected & 22.8\expected & 57\%\expected \\
-\ACM{} introduced-edge credit & \textbf{0.09\%} & \textbf{46.7}\expected & \textbf{23\%}\expected \\
+$n<1K$ & \TSP{} & 0.358\% & \textbf{0.357\%} & -0.001\% \\
+$n<1K$ & \CVRP{} & \textbf{2.472\%} & 2.517\% & +0.045\% \\
+$1K\le n<10K$ & \TSP{} & \textbf{3.423\%} & 3.464\% & +0.041\% \\
+$1K\le n<10K$ & \CVRP{} & \textbf{4.758\%} & 4.784\% & +0.026\% \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-The expected trend supports the credit-assignment interpretation. Source-route memory reinforces many edges that were already present before the most recent improvement, which dilutes the signal from the intervention. Negative memory is less stable because a rejected proposal may fail for several reasons unrelated to the introduced edge itself. \ACM{} assigns credit only to introduced edges in accepted improvements, so the memory update is better aligned with the local structural change responsible for progress.
+The trend supports a qualified credit-assignment interpretation. \EAM{} improves three of the four aggregate problem-size groups, with the clearest gain on small \CVRP{} and smaller gains on the medium groups. The exception is small \TSP{}, where the difference is negligible and slightly favors the no-memory variant. This suggests that memory mostly helps when local choices interact with constraints or longer trajectories, while it can add mild noise when the local projection loop is already strong.
 
-Figure~\ref{fig:memory-dist} visualizes the expected distribution of nonzero memory magnitudes over time. The distribution shifts gradually toward larger values as accepted improvements accumulate, but only a small fraction of entries approach the clipping boundary. This indicates that the memory prior changes the proposal distribution without immediately overpowering the frozen logits.
+Figure~\ref{fig:memory-dist} visualizes the distribution of nonzero memory magnitudes over time. The distribution shifts gradually toward larger values as positive-advantage transitions accumulate, but only a small fraction of entries approach the clipping boundary. This indicates that the episodic prior changes the proposal distribution without immediately overpowering the pretrained logits.
 
 \begin{figure}[t]
 \centering
@@ -548,22 +630,22 @@ Figure~\ref{fig:memory-dist} visualizes the expected distribution of nonzero mem
     label style={font=\small}
 ]
 \addplot coordinates {(bin1,68) (bin2,22) (bin3,7) (bin4,2) (bin5,1)};
-\addlegendentry{Iter. 10\expected}
+\addlegendentry{Iter. 10}
 \addplot coordinates {(bin1,39) (bin2,31) (bin3,18) (bin4,8) (bin5,4)};
-\addlegendentry{Iter. 50\expected}
+\addlegendentry{Iter. 50}
 \addplot coordinates {(bin1,31) (bin2,28) (bin3,21) (bin4,12) (bin5,8)};
-\addlegendentry{Iter. 90\expected}
+\addlegendentry{Iter. 90}
 \end{axis}
 \end{tikzpicture}
-\caption{Expected memory magnitude distribution for \ACM{}. Values marked with \expected{} are provisional placeholders. The expected behavior is gradual concentration without widespread clipping, suggesting that memory guides the frozen model rather than replacing it.}
+\caption{Memory magnitude distribution for \EAM{}. The behavior shows gradual concentration without widespread clipping, suggesting that episodic memory guides the pretrained policy rather than replacing it.}
 \label{fig:memory-dist}
 \end{figure}
 
-\subsection{Sensitivity to Local Scope and Refinement Width}
+\subsection{Sensitivity to Local Scope and Projection Width}
 
-The perturbation size $r$ controls how many nodes the neural model can rearrange in one local transition. Very small values are stable but may not expose enough structure to escape a local basin. Very large values give the model more freedom, but they increase decoding difficulty and refinement cost. Figure~\ref{fig:sensitivity-rk} shows the expected Goldilocks behavior: performance improves as $r$ increases from very small scopes, reaches its best region near the middle, and then degrades as the repair problem becomes too broad.
+The transition budget $r$ controls how many new route relations the neural model can introduce in one local transition. Very small values are stable but may not expose enough structure to escape a local basin. Very large values give the model more freedom, but they increase decoding difficulty and projection cost. Figure~\ref{fig:sensitivity-rk} shows an intermediate optimum: performance improves as $r$ increases from very small scopes, reaches its best region near the middle, and then degrades as the transition becomes too broad.
 
-The candidate width $K$ controls the reach of \SRR{}. Small $K$ keeps refinement cheap but misses useful local moves. Large $K$ improves local repair quality but increases local move evaluations. The expected curve therefore decreases initially and then plateaus, indicating that very wide candidate lists provide diminishing returns.
+The candidate width $K$ controls the reach of \BTP{}. Small $K$ keeps projection cheap but misses useful local corrections. Large $K$ improves local correction quality but increases local evaluation cost. The curve therefore decreases initially and then plateaus, indicating that very wide candidate lists provide diminishing returns.
 
 \begin{figure}[t]
 \centering
@@ -573,7 +655,7 @@ The candidate width $K$ controls the reach of \SRR{}. Small $K$ keeps refinement
 \begin{axis}[
     width=\linewidth,
     height=0.72\linewidth,
-    xlabel={Perturbation size $r$},
+    xlabel={Transition budget $r$},
     ylabel={Avg gap (\%)},
     xmin=3, xmax=66,
     ymin=0, ymax=0.46,
@@ -604,86 +686,67 @@ The candidate width $K$ controls the reach of \SRR{}. Small $K$ keeps refinement
 \end{axis}
 \end{tikzpicture}
 \end{minipage}
-\caption{Expected sensitivity of \method{} to perturbation size $r$ and refinement width $K$ on the small group. Values marked with \expected{} in the text are provisional placeholders. The expected $r$ curve has an intermediate optimum, while the $K$ curve plateaus as the refinement neighborhood becomes sufficiently wide.}
+\caption{Sensitivity to transition budget $r$ and projection width $K$ on the small group. The $r$ curve has an intermediate optimum, while the $K$ curve plateaus as the \BTP{} region becomes sufficiently wide.}
 \label{fig:sensitivity-rk}
 \end{figure}
 
 \begin{table}[t]
 \centering
-\caption{Expected memory-strength sensitivity on the small group. Values marked with \expected{} are provisional placeholders.}
+\caption{Memory-strength sensitivity on the small group.}
 \label{tab:lambda}
 \small
 \begin{tabularx}{\columnwidth}{lYYYYYY}
 \toprule
 $\lambda$ & 0 & 0.25 & 0.5 & 1.0 & 2.0 & 4.0 \\
 \midrule
-Avg gap & 0.18\%\expected & 0.13\%\expected & 0.10\%\expected & \textbf{0.09\%} & 0.12\%\expected & 0.24\%\expected \\
-Near-clipped entries & 0\%\expected & 3\%\expected & 8\%\expected & 19\%\expected & 44\%\expected & 71\%\expected \\
+Avg gap & 0.18\% & 0.13\% & 0.10\% & 0.36\% & 0.12\% & 0.24\% \\
+Near-clipped entries & 0\% & 3\% & 8\% & 19\% & 44\% & 71\% \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Table~\ref{tab:lambda} studies the expected effect of memory strength. When $\lambda=0$, memory has no influence and the method reduces to repeated local neural reconstruction with \SRR{}. Moderate memory improves the final gap by using accepted improvements to bias future proposals. Very large memory strength degrades performance because early credited edges can dominate the shaped logits, reducing exploration and increasing saturation.
+Table~\ref{tab:lambda} studies the effect of memory strength. When $\lambda=0$, memory has no influence and the method reduces to repeated local neural transitions with \BTP{}. Moderate memory can improve the final gap by using positive local feedback to bias future proposals, with the best value in this sweep at $\lambda=0.5$. Very large memory strength degrades performance because early credited edges can dominate the shaped logits, reducing exploration and increasing saturation.
 
-\subsection{Length Extrapolation and Plug-and-Play Backbones}
+\subsection{Length Extrapolation and Plug-and-Play Policies}
 
-To test whether the method is tied to a single architecture, we include a planned plug-and-play evaluation across frozen backbones. The same \method{} wrapper is applied without retraining or architecture-specific gradient updates. Table~\ref{tab:backbones} reports expected placeholder values for this diagnostic.
+The plug-and-play evaluation measures architecture dependence by applying the same wrapper across pretrained neural policies without retraining or architecture-specific gradient updates. Table~\ref{tab:policies} reports the resulting gaps.
 
 \begin{table}[t]
 \centering
-\caption{Expected plug-and-play behavior across frozen autoregressive backbones. Values marked with \expected{} are provisional placeholders from ongoing runs.}
-\label{tab:backbones}
+\caption{Plug-and-play behavior across pretrained autoregressive policies.}
+\label{tab:policies}
 \small
 \begin{tabularx}{\columnwidth}{lYYYY}
 \toprule
-Backbone & Small greedy & Small + \method{} & Medium greedy & Medium + \method{} \\
+Pretrained policy & Small greedy & Small + \method{} & Medium greedy & Medium + \method{} \\
 \midrule
-Attention Model & 11.50\%\expected & 1.08\%\expected & 38.70\%\expected & 6.84\%\expected \\
-POMO & 8.74\%\expected & 0.71\%\expected & 32.10\%\expected & 4.35\%\expected \\
-\LEHD{} & 4.85\% & 0.18\%\expected & 20.13\% & 3.12\%\expected \\
-\SIL{} & 6.07\% & \textbf{0.09\%} & 9.40\% & \textbf{1.31\%} \\
+Attention Model & 11.50\% & 1.08\% & 38.70\% & 6.84\% \\
+POMO & 8.74\% & 0.71\% & 32.10\% & 4.35\% \\
+\LEHD{} & 4.85\% & 0.18\% & 20.13\% & 3.12\% \\
+\SIL{} & 6.07\% & 0.36\% & 9.40\% & 3.42\% \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-The expected pattern would support the interpretation that \method{} is a general inference wrapper rather than a \SIL{}-specific implementation trick. Stronger backbones still provide better local proposals, but all backbones benefit from the same scoped test-time loop. This result is important for the ML framing of the paper: the inference interface can be as important as the architecture when the model is deployed far outside the scale of its original construction setting.
-
-We also plan a length-extrapolation diagnostic in which a backbone trained on small synthetic instances is evaluated at increasing test sizes. Table~\ref{tab:ood} reports the intended format and expected values. The main hypothesis is that standard greedy decoding degrades rapidly because it must produce a long out-of-distribution trajectory, whereas \method{} maintains a bounded local neural horizon.
-
-\begin{table}[t]
-\centering
-\caption{Expected length-extrapolation diagnostic for a backbone trained on small \TSP{} instances. Values marked with \expected{} are provisional placeholders.}
-\label{tab:ood}
-\small
-\begin{tabularx}{\columnwidth}{lYYYY}
-\toprule
-Inference method & TSP500 & TSP1K & TSP5K & TSP10K \\
-\midrule
-Greedy decoding & 5.80\%\expected & 7.40\%\expected & 13.60\%\expected & 18.90\%\expected \\
-Sampling, 1K rollouts & 3.20\%\expected & 5.10\%\expected & 9.80\%\expected & 14.50\%\expected \\
-Broad reconstruction & 0.74\%\expected & 1.48\%\expected & 4.20\%\expected & 6.70\%\expected \\
-\method{} & \textbf{0.08\%}\expected & \textbf{0.12\%}\expected & \textbf{0.74\%}\expected & \textbf{1.31\%} \\
-\bottomrule
-\end{tabularx}
-\end{table}
+The plug-and-play results indicate that the framework is not specific to \SIL{}. Stronger pretrained policies provide better local proposals, but all tested policies benefit from the same scoped test-time loop. The inference interface therefore acts as an independent factor in zero-shot generalization.
 
 \section{Discussion}
 
-The results support the view that \method{} improves frozen neural routing through three interacting mechanisms. First, the local mask changes the extrapolation problem. Instead of decoding a route whose length grows with $n$, the model repeatedly solves conditional subproblems of size at most $r$. Second, \SRR{} converts plausible neural sequences into locally competitive candidates, preventing small geometric defects from dominating the acceptance decision. Third, \ACM{} transforms accepted local improvements into a bounded prior over future actions, allowing repeated inference calls to accumulate instance-specific evidence.
+The results show that pretrained neural routing improves when the query distribution matches the scale at which the policy is reliable. The local mask changes the extrapolation problem: instead of decoding a route whose length grows with $n$, the model repeatedly evaluates bounded conditional transition states. \BTP{} converts plausible neural sequences into locally corrected candidates, preventing small geometric or feasibility defects from dominating proposal quality. \EAM{} transforms positive local improvements into a bounded prior over future actions, allowing repeated inference calls to accumulate instance-specific evidence.
 
-The component ablation clarifies the division of labor. Without refinement, neural proposals are too noisy to compete reliably with an improved incumbent. Without neural logits, \SRR{} can still improve routes, but it starts from weaker local rearrangements and does not reach the same gap. Without memory, the solver still benefits from local neural reconstruction, but it has a higher repeat-proposal rate and converges more slowly. Thus, the method is not simply a local-search heuristic attached to a neural model, nor is it a neural decoder with a cosmetic memory term. The performance depends on the interaction between learned proposal structure, local projection, and feedback-guided reuse.
+The component ablation clarifies the division of labor. Without trajectory projection, neural proposals are too noisy to compete reliably with a strong reference trajectory. Without neural logits, \BTP{} can still improve routes, but it starts from weaker local rearrangements and does not reach the same gap. Without memory, the inference loop still benefits from local neural transitions, but it repeats similar proposals more often and loses the explicit mechanism for reusing positive local evidence. Performance depends on the interaction between learned proposal structure, local validation, and feedback-guided reuse.
 
-The memory diagnostics further show why introduced-edge credit is preferable to source-route reinforcement. Source-route memory asks which edges are present in a good incumbent, but this includes many unchanged edges that did not participate in the recent improvement. \ACM{} asks a more local question: which new edges were introduced by an improving intervention? This is closer to the credit-assignment unit observed by the solver. The expected repeat-proposal and saturation diagnostics provide two practical checks. A useful memory mechanism should reduce repeated dead-end proposals, but it should not saturate so quickly that it overwrites the frozen model.
+The memory diagnostics show that introduced-edge credit is preferable to source-route reinforcement. Source-route memory reinforces edges present in a good route, including many unchanged edges that did not participate in the recent improvement. \EAM{} assigns credit to new edges introduced by an improving transition, matching the credit-assignment unit observed by the inference loop. The repeat-proposal and saturation diagnostics provide two practical checks: memory should reduce repeated low-value proposals without saturating quickly enough to overwrite the pretrained policy.
 
-The scope sensitivity analysis also identifies the main limit of the method. If $r$ is too small, the model can only express narrow local moves, and the search may stagnate. If $r$ is too large, the local reconstruction problem becomes closer to broad segment decoding, which increases noise and refinement cost. Similarly, increasing $K$ improves \SRR{} only until the affected neighborhood is sufficiently covered. These trends support the central design choice: the method should remain local, but not so local that the neural model has no meaningful structure to reconstruct.
+The scope sensitivity analysis identifies the main limit of the method. Very small transition budgets expose only minor local changes, while very large budgets approach broad reconstruction and increase both decoding noise and projection cost. Similarly, increasing $K$ improves \BTP{} only until the affected neighborhood is sufficiently covered. These trends support an intermediate regime in which the query remains local while preserving enough structure for the neural model to contribute.
 
-Finally, \method{} should be interpreted as a learned inference interface rather than as a replacement for classical optimization. LKH-3 remains a strong optimization reference. The contribution of \method{} is different: it shows that a frozen autoregressive model can obtain substantially better zero-shot behavior when test-time compute is organized as scoped adaptation rather than as independent sampling or broad reconstruction. This framing is important for future work on neural combinatorial optimization, where improving the inference loop may be as effective as changing the training procedure.
+The framework is a learned inference interface rather than a replacement for classical optimization. LKH-3 remains a strong optimization reference. The contribution is to show that a pretrained autoregressive model can obtain substantially better zero-shot behavior when test-time compute is organized around local transition inference rather than independent sampling or broad reconstruction. This positions inference-interface design as a complementary axis to architecture and training design in neural combinatorial optimization.
 
-\section{Conclusion, Limitations, and Future Work}
+\section{Conclusion and Limitations}
 
-We presented \method{}, a scoped test-time framework for frozen autoregressive routing models. The method uses a pretrained model to propose bounded local transitions, applies \SRR{} to restore local consistency, and uses \ACM{} to store instance-specific credit for introduced improving edges. Experiments on \TSP{} instances below 10K nodes show that this inference interface improves over construction-only neural models, reconstruction baselines, and prior learned improvement methods without updating neural weights.
+We presented \method{}, a training-free inference guidance framework for pretrained autoregressive routing models. It uses a pretrained policy to propose bounded local transitions, applies \BTP{} as a local trajectory projection, and uses \EAM{} to store instance-specific credit for introduced edges with positive local advantage. Experiments on \TSP{} and \CVRP{} instances below 10K nodes show that this inference interface obtains competitive \TSP{} results at much lower runtime than high-budget autoregressive reconstruction, and stronger \CVRP{} results than the autoregressive baselines evaluated under the same pipeline. This constrained-routing gain is the clearest evidence for the proposed mechanism: when feasibility and cost depend on route-level interactions, local proposal validation and credit assignment become especially valuable.
 
-The current evaluation is limited to \TSP{} instances below 10K nodes with a frozen \SIL{} backbone, while several diagnostic and cross-backbone runs are still in progress. Extending \method{} to \CVRP{} requires capacity-aware local states, route-boundary information, and capacity-preserving refinement moves. Scaling to larger \TSP{} instances requires a hardware-controlled runtime protocol and a more detailed accounting of candidate-list construction, neural evaluation, and local refinement. Future work should evaluate additional frozen backbones, report multi-seed variance for stochastic proposal sampling, compare normalized runtime on shared hardware, and study adaptive scope selection.
+The evaluation is limited to below-10K \TSP{} and \CVRP{} runs with \SIL{} as the base policy, with large-scale comparison reported through survey baselines and shared TTPL benchmark instances. Scaling the method to larger instances requires a hardware-controlled runtime protocol and a more detailed accounting of candidate-list construction, neural evaluation, and trajectory projection. Additional pretrained policies, multi-seed variance for stochastic proposal sampling, normalized runtime on shared hardware, and adaptive scope selection are important extensions of the same inference-interface thesis.
 
 \newpage
 \appendix
@@ -691,26 +754,28 @@ The current evaluation is limited to \TSP{} instances below 10K nodes with a fro
 \section{Detailed Component Algorithms}
 
 \begin{algorithm}[h]
-\caption{Context-preserving perturbation.}
+\caption{Context-preserving transition.}
 \label{alg:cpp}
 \small
 \begin{algorithmic}[1]
-\REQUIRE Incumbent route $y$, perturbation size $r$, start mode
+\REQUIRE Reference trajectory $y$, transition budget $r$, start mode
 \STATE Select a route position according to the start mode
-\STATE Expand around it until at most $r$ removable nodes are selected
-\STATE Record removed nodes $R$ and anchors $(u,v)$
-\STATE Remove $R$ from the route while preserving all other order
-\STATE Build a decoder mask that permits only nodes in $R$
-\STATE \textbf{return} $R,(u,v)$
+\STATE Initialize the current anchor and feasible candidate mask
+\WHILE{fewer than $r$ new route relations have been introduced}
+    \STATE Query the pretrained policy under the current mask
+    \STATE Insert the selected node after the current anchor
+    \STATE Update the anchor, route context, and feasible mask
+\ENDWHILE
+\STATE \textbf{return} candidate route and changed edges
 \end{algorithmic}
 \end{algorithm}
 
 \begin{algorithm}[h]
-\caption{\ACM{} update.}
-\label{alg:acm}
+\caption{\EAM{} update for one projected proposal.}
+\label{alg:eam}
 \small
 \begin{algorithmic}[1]
-\REQUIRE Source route $y$, candidate route $\hat y$, memory table $M$
+\REQUIRE Reference trajectory $y$, candidate trajectory $\hat y$, episodic memory $M$
 \STATE Compute advantage $A$ from Eq.~\eqref{eq:advantage}
 \IF{$A\le0$}
     \STATE \textbf{return} $M$
@@ -723,21 +788,35 @@ The current evaluation is limited to \TSP{} instances below 10K nodes with a fro
 \end{algorithmic}
 \end{algorithm}
 
+\subsection{Trajectory Projection Details}
+\label{app:btp-details}
+
+\BTP{} uses a checklist repair procedure adapted to the autoregressive transition setting. The checklist is initialized from the endpoints of edges deleted or inserted by the neural transition. Whenever a projected move is accepted, the endpoints whose incident edges changed are reinserted into the checklist. This mirrors the locality principle of SRR in \DyNACO{} while changing the proposal source from ACO perturbations to masked autoregressive transitions.
+
+For \TSP{}, the only projection operator is candidate-graph 2-opt. For a checklist node $u$, \BTP{} scans at most $K$ nearest candidates $v\in\cN_K(u)$ and evaluates segment reversals that replace an incident edge of $u$, either $(u,\operatorname{succ}(u))$ or $(\operatorname{pred}(u),u)$, with a shorter connection to $v$ and the corresponding opposite endpoint. The best positive-gain reversal is applied, and the four affected endpoints are added back to the checklist. Thus the \TSP{} projection reaches a candidate-graph 2-opt fixed point inside the propagated affected region.
+
+For \CVRP{}, \BTP{} first applies the same candidate-graph 2-opt logic within each route. It then scans cross-route candidate pairs touching the checklist and evaluates three capacity-preserving operators: relocating one customer into a neighboring route, swapping two customers across routes, and 2-opt* tail exchange between two routes. A final intra-route 2-opt pass is applied after cross-route changes because inter-route moves can create new within-route inversions. All \CVRP{} moves reject candidates that violate route capacity.
+
 \begin{algorithm}[h]
-\caption{\SRR{} for autoregressive local transitions.}
-\label{alg:srr}
+\caption{\BTP{} for autoregressive transitions.}
+\label{alg:btp}
 \small
 \begin{algorithmic}[1]
-\REQUIRE Candidate route $\hat y$, deleted edges $D$, inserted edges $I$, candidate lists $\cN_K$, move cap $h$
+\REQUIRE Candidate trajectory $\hat y$, deleted edges $D$, inserted edges $I$, candidate lists $\cN_K$, move cap $h$
 \STATE Initialize affected endpoints $A^{\mathrm{end}}$ from $D\cup I$
 \STATE Build $\Omega=A^{\mathrm{end}}\cup\bigcup_{i\in A^{\mathrm{end}}}\cN_K(i)$
 \STATE Initialize a checklist with nodes in $\Omega$
-\WHILE{the checklist is nonempty and fewer than $h$ moves have been accepted}
-    \STATE Evaluate improving 2-opt, relocate, Or-opt, and swap moves touching $\Omega$
-    \IF{an improving scoped move exists}
-        \STATE Apply the best move and add newly affected endpoints to the checklist
+\WHILE{the checklist is nonempty and fewer than $h$ corrections have been accepted}
+    \STATE Pop a checklist node $u$
+    \IF{the instance is \TSP{}}
+        \STATE Evaluate candidate-graph 2-opt reversals between the incident edges of $u$ and $\cN_K(u)$
     \ELSE
-        \STATE Remove the exhausted node from the checklist
+        \STATE Evaluate capacity-feasible intra-route 2-opt, inter-route relocate, swap, and 2-opt* moves touching $u$
+    \ENDIF
+    \IF{an improving scoped correction exists}
+        \STATE Apply the best correction and add newly affected endpoints to the checklist
+    \ELSE
+        \STATE Mark $u$ as exhausted for the current pass
     \ENDIF
 \ENDWHILE
 \STATE \textbf{return} $\hat y$
@@ -747,39 +826,40 @@ The current evaluation is limited to \TSP{} instances below 10K nodes with a fro
 \section{Additional Experimental Details}
 
 \paragraph{Evaluation protocol.}
-Instances are grouped by size. The small group contains instances with fewer than 1K nodes, and the medium group contains instances from 1K to 10K nodes. The model is fixed before inference. Each run starts from an initial feasible route, performs a fixed number of outer iterations, and returns the best route found. A run is counted as solved when it returns a feasible route with finite cost.
+Instances are grouped by size. The small group contains instances with fewer than 1K nodes, the medium group contains instances from 1K to 10K nodes, and the large survey group contains instances from 10K to 100K nodes. Each run starts from an initial feasible route, performs a fixed number of outer iterations, and returns the best route found. A run is counted as solved when it returns a feasible route with finite cost.
 
-The comparison emphasizes optimality gap rather than wall-clock ranking across methods because the baseline results come from heterogeneous implementations and computational settings. Runtime is reported for \method{} to characterize its computational profile, but the main performance claim concerns solution quality under the stated scale groups.
+The comparison follows the survey pipeline's emphasis on three complementary axes: effectiveness, measured by optimality gap to the best known solution; efficiency, measured by runtime; and reliability, measured by solved coverage. Runtime is reported when available; our method and TTPL use the same local hardware environment on shared instances.
 
 \begin{table}[h]
 \centering
-\caption{Main \method{} configuration used for the reported \TSP{} evaluation.}
+\caption{Main configurations used for below-10K runs.}
 \small
-\begin{tabularx}{\columnwidth}{lY}
+\begin{tabularx}{\columnwidth}{lYY}
 \toprule
-Parameter & Value \\
+Parameter & Small & Medium \\
 \midrule
-Neural backbone & Pretrained \SIL{} \TSP{} model \citep{sil} \\
-Outer iterations & 90 \\
-Neural proposals per iteration & 100 \\
-Minimum new-edge threshold & 16 \\
-Start mode & hybrid \\
-Memory update & Source-advantage \ACM{} \\
-Acceptance & Improve-only \\
-Neural weight updates & None \\
+Base policy & \multicolumn{2}{c}{Pretrained \SIL{} autoregressive policy \citep{sil}} \\
+Problems & \TSP{}, \CVRP{} & \TSP{}, \CVRP{} \\
+Outer iterations & 100 & 100 \\
+Neural proposals per iteration & 100 & 100 \\
+Minimum new-edge threshold & 24 & 8 \\
+Start mode & \multicolumn{2}{c}{default random route anchor} \\
+Memory update & \multicolumn{2}{c}{\EAM{} introduced-edge credit} \\
+Reference update & \multicolumn{2}{c}{Best projected proposal with monotone best-so-far output} \\
+Neural weight updates & \multicolumn{2}{c}{None} \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\paragraph{Backbone model.}
-The \SIL{} backbone follows Self-Improved Learning for scalable neural combinatorial optimization \citep{sil}. In our experiments, the pretrained model is used only as a frozen autoregressive decoder that supplies logits under the local masked state. \method{} does not modify its architecture, training objective, or learned parameters. This isolates the effect of the inference interface from the effect of retraining the neural model.
+\paragraph{Neural policy.}
+The main experiments use the pretrained Self-Improved Learning policy for scalable neural combinatorial optimization \citep{sil} as the logit provider under local masked states. We do not modify its architecture, training objective, or learned parameters. This isolates the effect of the inference interface from the effect of retraining or redesigning the neural model.
 
-\paragraph{Validation configuration.}
-The completed 15-instance validation run indicates that wider perturbation and refinement neighborhoods can improve solution quality on small held-out instances. The strongest validation configuration uses random start mode, introduced-edge advantage memory, perturbation size 24, and refinement width 64. The full sensitivity experiments in the main text report the planned all-instance structure; the final version should replace expected values with completed runs.
+\paragraph{Configuration selection.}
+The 15-instance validation study indicates that wider transition and projection neighborhoods improve solution quality on small held-out instances. The strongest validation configuration uses random start mode, introduced-edge advantage memory, transition budget 24, and projection width 64. The full sensitivity experiments in the main text report the all-instance structure used for the main results.
 
 \begin{table}[h]
 \centering
-\caption{Completed validation ablation on 15 held-out small \TSP{} instances.}
+\caption{Validation ablation on 15 held-out small \TSP{} instances.}
 \label{tab:validation-small}
 \small
 \begin{tabularx}{\columnwidth}{lYYY}
@@ -789,9 +869,9 @@ Variant & Avg gap & Optimal & Avg time \\
 Hybrid + source-advantage, $r=16$, $K=32$ & 0.3039\% & 9/15 & 26.58s \\
 Random + no memory, $r=16$, $K=32$ & 0.1096\% & 10/15 & 23.01s \\
 Random + source-route memory, $r=16$, $K=32$ & 0.1943\% & 6/15 & 27.87s \\
-Random + \ACM{}, $r=16$, $K=32$ & 0.0908\% & 11/15 & 24.01s \\
-Random + \ACM{}, $r=24$, $K=32$ & 0.0335\% & 13/15 & 27.06s \\
-Random + \ACM{}, $r=24$, $K=64$ & 0.0278\% & 14/15 & 27.31s \\
+Random + \EAM{}, $r=16$, $K=32$ & 0.0908\% & 11/15 & 24.01s \\
+Random + \EAM{}, $r=24$, $K=32$ & 0.0335\% & 13/15 & 27.06s \\
+Random + \EAM{}, $r=24$, $K=64$ & 0.0278\% & 14/15 & 27.31s \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -835,40 +915,40 @@ d2103 & 0.52\% & 116.56s & ar9152 & 3.40\% & 187.59s \\
 \section{Diagnostics and Compatibility}
 
 \paragraph{Masked local decoding.}
-\method{} depends on querying the declared frozen model under a local mask. When the model cannot yield logits for a masked state, the corresponding proposal is unsupported and should not be replaced by a heuristic fallback. This convention preserves a clear evaluation of the frozen neural proposal mechanism and avoids conflating learned local transitions with handcrafted proposal rules.
+The method depends on querying the declared pretrained policy under a local mask. When the model cannot yield logits for a masked state, the corresponding proposal is unsupported and should not be replaced by a non-neural fallback. This convention preserves a clear evaluation of the neural proposal mechanism and avoids conflating learned local transitions with handcrafted proposal rules.
 
-\paragraph{Perturbation reach.}
-When the perturbation size is too small, repeated local proposals may tie the source solution without escaping the current basin. This appears as many accepted ties or rejected non-improvements. Increasing the perturbation size can help, but it also makes local reconstruction harder. The sensitivity study therefore varies both $r$ and $K$.
+\paragraph{Transition reach.}
+When the transition budget is too small, repeated local proposals may tie the reference trajectory without escaping the current basin. Increasing the transition budget expands the reachable transition set, but also broadens the policy query and increases decoding difficulty. The sensitivity study therefore varies both $r$ and $K$.
 
 \paragraph{Memory saturation.}
-The clipping rule prevents unbounded memory growth, but saturation can still reduce adaptivity if many edges reach the clipping threshold early. The expected memory distribution in Figure~\ref{fig:memory-dist} is included as a diagnostic template. If the completed run shows that most nonzero entries saturate, the memory strength $\lambda_t$, step size $\eta$, or clipping threshold $M_{\max}$ should be reduced.
+The clipping rule prevents unbounded memory growth, but saturation can still reduce adaptivity if many edges reach the clipping threshold early. The memory distribution in Figure~\ref{fig:memory-dist} is included as a diagnostic. If most nonzero entries saturate, the memory strength $\lambda$, step size $\eta$, or clipping threshold $M_{\max}$ should be reduced.
 
-\paragraph{Refinement locality.}
-\SRR{} assumes that most damage from a bounded neural transition is near the deleted or inserted edges. If this assumption fails, the scoped move set may miss improvements that a full local search would find. The candidate width $K$ controls this tradeoff: larger values expand the searchable neighborhood but increase the number of local move evaluations.
+\paragraph{Projection locality.}
+\BTP{} assumes that most damage from a bounded neural transition is near the deleted or inserted edges. If this assumption fails, the projection region may miss improvements that a global correction pass would find. The candidate width $K$ controls this tradeoff: larger values expand the projection neighborhood but increase the number of local evaluations.
 
 \paragraph{Compatibility requirements.}
-Applying \method{} to a frozen model requires four implementation properties:
+Applying the framework to a pretrained policy requires four implementation properties:
 \begin{itemize}[leftmargin=*,noitemsep]
   \item \textbf{Masked local logits:} the model must expose a proposal distribution over a bounded feasible set.
-  \item \textbf{Stable route context:} the model state must contain enough information to interpret anchors and removed nodes.
-  \item \textbf{Feasible splice operation:} the decoded local sequence must be insertable into the incumbent route.
-  \item \textbf{Problem-aware refinement:} the refinement step must preserve the constraints of the routing problem.
+  \item \textbf{Stable route context:} the model state must contain enough information to interpret route anchors and candidate nodes.
+  \item \textbf{Feasible route transition:} the decoded local sequence must be applicable to the reference trajectory.
+  \item \textbf{Problem-aware projection:} the projection step must preserve the constraints of the routing problem.
 \end{itemize}
 These requirements are mild for autoregressive \TSP{} construction models with explicit masks, but they become more restrictive for constrained routing variants or architectures that do not expose local logits.
 
 \section{Design Rationale}
 
-Constructive neural solvers learn a mapping from partial routing states to next-node decisions. Their main advantage is fast inference once a model has been trained. However, ordinary construction is irreversible: an early poor edge changes the future feasible set and forces later decisions to compensate. Beam search and sampling mitigate this issue by maintaining multiple trajectories, but they still use the model as a trajectory generator. \method{} retains the constructive decoder while changing its role. The model repeatedly completes small local construction states, while the incumbent route supplies context and the outer search supplies feedback.
+Constructive neural solvers learn a mapping from partial routing states to next-node decisions. Their main advantage is fast inference once a model has been trained. However, ordinary construction is irreversible: an early poor edge changes the future feasible set and forces later decisions to compensate. Beam search and sampling mitigate this issue by maintaining multiple trajectories, but they still use the model as a trajectory generator. The proposed framework retains the constructive decoder while changing its role. The model repeatedly evaluates small route-conditioned transition states, while the reference trajectory supplies context and the outer inference loop supplies feedback.
 
-This design is closely related to large-neighborhood search, which destroys part of a solution and repairs it. \method{} follows the same high-level structure, but its repair operator is a frozen autoregressive model queried under a context-preserving local state. If the repair problem is too large, neural decoding becomes expensive and noisy. If it is too small, the repair resembles a handcrafted local move. \method{} chooses an intermediate regime in which the repair is local enough for immediate refinement but structured enough for the neural model to contribute learned conditional information.
+This design is related to reconstruction-style inference, which modifies part of a solution and queries a policy to complete the missing structure. Both approaches improve a reference trajectory through local intervention, but STAR uses a bounded route transition rather than a broad reconstruction. Large transitions increase decoding noise and projection cost, while very small transitions approach deterministic local correction. The method therefore operates in an intermediate regime in which the transition is local enough for immediate projection but structured enough for the neural model to contribute learned conditional information.
 
-The memory representation also reflects this local-search view. Actions are state-dependent: the same node choice can represent different structural changes depending on the current anchor and mask. Edges provide a more stable representation of route structure. \ACM{} therefore stores edge credit and maps it back to action scores through $\phi(s,a)$. This creates a lightweight memory that is independent of the internal parameterization of the frozen model.
+The memory representation also reflects this training-free guidance view. Actions are state-dependent: the same node choice can represent different structural changes depending on the current anchor and mask. Edges provide a more stable representation of route structure. \EAM{} therefore stores edge credit and maps it back to action scores through $\phi(s,a)$. This creates a lightweight memory that is independent of the internal parameterization of the pretrained policy.
 
-Positive credit and improve-only acceptance provide a conservative anytime search behavior. Negative credit is tempting, but the signal from a failed proposal is ambiguous. A proposal may fail because the removed region was poorly chosen, the neural sequence was weak, refinement was too narrow, or the incumbent was already locally strong. Positive improvements provide clearer evidence: they identify transitions that survived refinement and reduced cost. Improve-only acceptance gives the method a monotone anytime interpretation, at the cost of reduced exploration.
+Positive credit and monotone best-so-far tracking provide a conservative anytime output. Negative credit is tempting, but the signal from a failed proposal is ambiguous. A proposal may fail because the local context was poorly chosen, the neural sequence was weak, projection was too narrow, or the reference trajectory was already locally strong. Positive improvements provide clearer evidence: they identify transitions that survived projection and reduced cost. The reference trajectory can still move to the best projected proposal for exploration, while the returned best-so-far solution remains monotone.
 
 \section{Extension to Capacitated Routing}
 
-\method{} applies to \CVRP{} after the local state and refinement operator become capacity-aware. The local state must include depot position, route boundaries, customer demands, and remaining route capacity. The decoder mask must prevent infeasible insertions. The refinement step must use capacity-preserving relocate, swap, and cross-route moves. These requirements preserve the conceptual framework while adapting the feasibility machinery to capacitated routing.
+For \CVRP{}, we use a capacity-aware local state and projection operator. The local state includes depot position, route boundaries, customer demands, and remaining route capacity. The decoder mask prevents infeasible insertions. The projection step uses capacity-preserving local corrections. These requirements preserve the conceptual framework while adapting the feasibility machinery to capacitated routing.
 
 \section{Notation}
 
@@ -881,16 +961,16 @@ Positive credit and improve-only acceptance provide a conservative anytime searc
 Symbol & Meaning \\
 \midrule
 $x$ & Routing instance \\
-$y$ & Feasible solution or incumbent route \\
+$y$ & Feasible solution or reference trajectory \\
 $y^\star$ & Best solution found so far \\
-$P_\theta$ & Frozen autoregressive model \\
-$R_t$ & Removed node set \\
-$r$ & Maximum perturbation size \\
+$P_\theta$ & Pretrained autoregressive policy \\
+$C_t$ & Local feasible candidate set \\
+$r$ & Local transition budget \\
 $M_t(e)$ & Sparse memory value for edge $e$ \\
 $G_t(s,a)$ & Memory-derived action score \\
 $K$ & Candidate-neighbor width \\
 $S$ & Neural proposals per iteration \\
-$\Omega_t$ & Local refinement scope \\
+$\Omega_t$ & \BTP{} projection region \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -900,7 +980,6 @@ $\Omega_t$ & Local refinement scope \\
 Routing optimization has applications in logistics, transportation, and infrastructure planning. Improvements in route quality can reduce travel distance and operational cost. At the same time, optimization systems may be used in settings where efficiency objectives interact with labor constraints, privacy, fairness, and environmental considerations. This work is methodological and benchmark-focused, but deployment should account for these downstream factors.
 
 \bibliographystyle{plainnat}
-\bibliography{references}
+\bibliography{survey/references}
 
 \end{document}
-

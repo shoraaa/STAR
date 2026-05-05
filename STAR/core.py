@@ -23,7 +23,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Iterable, Protocol, Sequence
+from typing import Any, Callable, Iterable, Protocol, Sequence
 
 import numpy as np
 import torch
@@ -60,6 +60,28 @@ FIELDS = [
     "final_cost",
     "gap",
     "time",
+]
+
+STAR_PROGRESS_FIELDS = [
+    "strategy_id",
+    "policy_id",
+    "problem",
+    "instance",
+    "completed_iterations",
+    "iteration",
+    "total_iterations",
+    "samples",
+    "min_new_edges",
+    "refine_k",
+    "refine",
+    "memory",
+    "memory_update_mode",
+    "advantage_scale",
+    "source_cost",
+    "best_cost",
+    "best_gap",
+    "elapsed_seconds",
+    "iteration_seconds",
 ]
 
 ORIGINAL_SMALLEST_GAPS = {
@@ -1110,6 +1132,7 @@ class STARStrategy:
     STAR_profile: bool = False
     STAR_trace_rows: list[dict[str, str]] = field(default_factory=list)
     STAR_profile_rows: list[dict[str, str]] = field(default_factory=list)
+    STAR_progress_callback: Callable[[dict[str, str]], None] | None = field(default=None, repr=False)
 
     def run(self, instance: Instance, policy: AppendPolicy, rng: random.Random) -> tuple[float, float, bool]:
         if self.iterations < 0:
@@ -1147,6 +1170,7 @@ class STARStrategy:
             raise ValueError(f"STAR-start-mode {self.start_mode} with policy weight requires a TSP neural policy")
         if self.start_mode == "hybrid" and self.start_memory_weight > 0.0 and not self.memory:
             raise ValueError("STAR-start-mode hybrid with memory weight requires STAR memory")
+        run_t0 = time.perf_counter()
 
         if instance.problem == "tsp":
             route = tsp_initial_multi_start_cpp(instance, starts=8, k=self.neural_knn_k)
@@ -1170,6 +1194,16 @@ class STARStrategy:
             best = route
             best_cost = initial
             source_cost = initial
+            self.record_STAR_progress(
+                instance,
+                policy,
+                completed_iterations=0,
+                iteration=-1,
+                source_cost=source_cost,
+                best_cost=best_cost,
+                elapsed_seconds=time.perf_counter() - run_t0,
+                iteration_seconds=0.0,
+            )
             edge_memory = self.make_edge_memory(instance) if self.memory else None
             neighbor_order = STAR_neighbor_order(
                 instance,
@@ -1308,6 +1342,17 @@ class STARStrategy:
                     perturb_profile["memory_update_seconds"] = f"{update_time:.9f}"
                     perturb_profile["iteration_seconds"] = f"{time.perf_counter() - iter_t0:.9f}"
                     self.STAR_profile_rows.append({key: str(value) for key, value in perturb_profile.items()})
+                iter_seconds = time.perf_counter() - iter_t0
+                self.record_STAR_progress(
+                    instance,
+                    policy,
+                    completed_iterations=iteration + 1,
+                    iteration=iteration,
+                    source_cost=source_cost,
+                    best_cost=best_cost,
+                    elapsed_seconds=time.perf_counter() - run_t0,
+                    iteration_seconds=iter_seconds,
+                )
             return initial, best_cost, validate_tsp(instance, best)
 
         if instance.problem == "cvrp":
@@ -1317,6 +1362,16 @@ class STARStrategy:
             source_cost = initial
             best_routes = routes
             best_cost = initial
+            self.record_STAR_progress(
+                instance,
+                policy,
+                completed_iterations=0,
+                iteration=-1,
+                source_cost=source_cost,
+                best_cost=best_cost,
+                elapsed_seconds=time.perf_counter() - run_t0,
+                iteration_seconds=0.0,
+            )
             edge_memory = self.make_edge_memory(instance) if self.memory else None
             neighbor_order = STAR_neighbor_order(
                 instance,
@@ -1385,9 +1440,59 @@ class STARStrategy:
                     perturb_profile["memory_update_seconds"] = f"{update_time:.9f}"
                     perturb_profile["iteration_seconds"] = f"{time.perf_counter() - iter_t0:.9f}"
                     self.STAR_profile_rows.append({key: str(value) for key, value in perturb_profile.items()})
+                iter_seconds = time.perf_counter() - iter_t0
+                self.record_STAR_progress(
+                    instance,
+                    policy,
+                    completed_iterations=iteration + 1,
+                    iteration=iteration,
+                    source_cost=source_cost,
+                    best_cost=best_cost,
+                    elapsed_seconds=time.perf_counter() - run_t0,
+                    iteration_seconds=iter_seconds,
+                )
             return initial, best_cost, validate_cvrp(instance, best_routes)
 
         raise ValueError(f"unsupported problem for STAR: {instance.problem}")
+
+    def record_STAR_progress(
+        self,
+        instance: Instance,
+        policy: AppendPolicy,
+        *,
+        completed_iterations: int,
+        iteration: int,
+        source_cost: float,
+        best_cost: float,
+        elapsed_seconds: float,
+        iteration_seconds: float,
+    ) -> None:
+        if self.STAR_progress_callback is None:
+            return
+        best_gap = ((best_cost - instance.bks_cost) / instance.bks_cost * 100) if instance.bks_cost else ""
+        self.STAR_progress_callback(
+            {
+                "strategy_id": self.strategy_id,
+                "policy_id": getattr(policy, "policy_id", str(policy)),
+                "problem": instance.problem,
+                "instance": instance.name,
+                "completed_iterations": str(completed_iterations),
+                "iteration": str(iteration),
+                "total_iterations": str(self.iterations),
+                "samples": str(self.STAR_samples),
+                "min_new_edges": str(self.min_new_edges),
+                "refine_k": str(self.refine_k),
+                "refine": str(self.refine),
+                "memory": str(self.memory),
+                "memory_update_mode": self.effective_memory_update_mode(instance),
+                "advantage_scale": f"{self.advantage_scale:.12g}",
+                "source_cost": f"{source_cost:.6f}",
+                "best_cost": f"{best_cost:.6f}",
+                "best_gap": f"{best_gap:.6f}" if isinstance(best_gap, float) else "",
+                "elapsed_seconds": f"{elapsed_seconds:.6f}",
+                "iteration_seconds": f"{iteration_seconds:.6f}",
+            }
+        )
 
     def make_edge_memory(self, instance: Instance) -> SparseEdgeMemory:
         tau_min = self.memory_tau_min if self.memory_tau_min is not None else 1.0 / max(1, self.memory_k)
@@ -1618,6 +1723,7 @@ def search_strategy(
     advantage_min: float = 0.0,
     STAR_trace: bool = False,
     STAR_profile: bool = False,
+    STAR_progress_callback: Callable[[dict[str, str]], None] | None = None,
 ) -> SearchStrategy | UnsupportedStrategy:
     if strategy_id.lower() == "star":
         strategy_id = "STAR"
@@ -1647,6 +1753,7 @@ def search_strategy(
             advantage_min=advantage_min,
             STAR_trace=STAR_trace,
             STAR_profile=STAR_profile,
+            STAR_progress_callback=STAR_progress_callback,
         )
     if strategy_id in {"lehd_rrc", "rrc"}:
         return RRCStrategy(iterations=1000 if iterations is None else iterations)
@@ -4752,6 +4859,7 @@ def run_one(
     STAR_profile: bool = False,
     STAR_trace_rows: list[dict[str, str]] | None = None,
     STAR_profile_rows: list[dict[str, str]] | None = None,
+    STAR_progress_callback: Callable[[dict[str, str]], None] | None = None,
 ) -> dict[str, str]:
     if strategy_id.lower() == "star":
         strategy_id = "STAR"
@@ -4781,6 +4889,7 @@ def run_one(
         advantage_min=STAR_advantage_min,
         STAR_trace=STAR_trace,
         STAR_profile=STAR_profile,
+        STAR_progress_callback=STAR_progress_callback,
     )
     instance = instance if instance is not None else load_instance(problem)
     policy = append_policy(policy_id, problem)
@@ -4914,48 +5023,59 @@ def run_matrix(
     rows = []
     STAR_trace_rows: list[dict[str, str]] = []
     STAR_profile_rows: list[dict[str, str]] = []
+    out_dir.mkdir(parents=True, exist_ok=True)
+    progress_path = out_dir / "STAR_progress.csv"
     if stream:
         print_stream_header()
-    for strategy_id in csv_items(strategies, search_strategy_ids()):
-        for policy_id in csv_items(policies, append_policy_ids()):
-            for problem in csv_items(problems, ["tsp", "cvrp"]):
-                for path in instance_paths(problem, size):
-                    result = run_one(
-                        strategy_id,
-                        policy_id,
-                        problem,
-                        seed,
-                        instance=load_instance_path(problem, path),
-                        iterations=iterations,
-                        min_new_edges=min_new_edges,
-                        refine_k=refine_k,
-                        refine=refine,
-                        neural_knn_k=neural_knn_k,
-                        neural_backup_k=neural_backup_k,
-                        neural_knn_mask=neural_knn_mask,
-                        STAR_samples=STAR_samples,
-                        STAR_memory=STAR_memory,
-                        STAR_memory_k=STAR_memory_k,
-                        STAR_memory_rho=STAR_memory_rho,
-                        STAR_memory_tau_min=STAR_memory_tau_min,
-                        STAR_memory_tau_max=STAR_memory_tau_max,
-                        STAR_memory_alpha=STAR_memory_alpha,
-                        STAR_start_mode=STAR_start_mode,
-                        STAR_start_probes=STAR_start_probes,
-                        STAR_start_cost_weight=STAR_start_cost_weight,
-                        STAR_start_policy_weight=STAR_start_policy_weight,
-                        STAR_start_memory_weight=STAR_start_memory_weight,
-                        STAR_memory_update_mode=STAR_memory_update_mode,
-                        STAR_advantage_scale=STAR_advantage_scale,
-                        STAR_advantage_min=STAR_advantage_min,
-                        STAR_trace=STAR_trace,
-                        STAR_profile=STAR_profile,
-                        STAR_trace_rows=STAR_trace_rows,
-                        STAR_profile_rows=STAR_profile_rows,
-                    )
-                    rows.append(result)
-                    if stream:
-                        print_stream_row(result)
+    with progress_path.open("w", encoding="utf-8", newline="") as progress_handle:
+        progress_writer = csv.DictWriter(progress_handle, fieldnames=STAR_PROGRESS_FIELDS)
+        progress_writer.writeheader()
+
+        def write_STAR_progress(progress_row: dict[str, str]) -> None:
+            progress_writer.writerow({field: progress_row.get(field, "") for field in STAR_PROGRESS_FIELDS})
+            progress_handle.flush()
+
+        for strategy_id in csv_items(strategies, search_strategy_ids()):
+            for policy_id in csv_items(policies, append_policy_ids()):
+                for problem in csv_items(problems, ["tsp", "cvrp"]):
+                    for path in instance_paths(problem, size):
+                        result = run_one(
+                            strategy_id,
+                            policy_id,
+                            problem,
+                            seed,
+                            instance=load_instance_path(problem, path),
+                            iterations=iterations,
+                            min_new_edges=min_new_edges,
+                            refine_k=refine_k,
+                            refine=refine,
+                            neural_knn_k=neural_knn_k,
+                            neural_backup_k=neural_backup_k,
+                            neural_knn_mask=neural_knn_mask,
+                            STAR_samples=STAR_samples,
+                            STAR_memory=STAR_memory,
+                            STAR_memory_k=STAR_memory_k,
+                            STAR_memory_rho=STAR_memory_rho,
+                            STAR_memory_tau_min=STAR_memory_tau_min,
+                            STAR_memory_tau_max=STAR_memory_tau_max,
+                            STAR_memory_alpha=STAR_memory_alpha,
+                            STAR_start_mode=STAR_start_mode,
+                            STAR_start_probes=STAR_start_probes,
+                            STAR_start_cost_weight=STAR_start_cost_weight,
+                            STAR_start_policy_weight=STAR_start_policy_weight,
+                            STAR_start_memory_weight=STAR_start_memory_weight,
+                            STAR_memory_update_mode=STAR_memory_update_mode,
+                            STAR_advantage_scale=STAR_advantage_scale,
+                            STAR_advantage_min=STAR_advantage_min,
+                            STAR_trace=STAR_trace,
+                            STAR_profile=STAR_profile,
+                            STAR_trace_rows=STAR_trace_rows,
+                            STAR_profile_rows=STAR_profile_rows,
+                            STAR_progress_callback=write_STAR_progress,
+                        )
+                        rows.append(result)
+                        if stream:
+                            print_stream_row(result)
     write_outputs(rows, out_dir, STAR_trace_rows, STAR_profile_rows)
     return rows
 

@@ -88,28 +88,28 @@ uv run run.py STAR sil cvrp \
 ### STAR+SiL scaling
 
 ```bash
-for it in 10 20 40 60 100; do
-  uv run run.py STAR sil cvrp \
-    --size medium \
-    --iterations $it \
-    --STAR-samples 100 \
-    --min-new-edges 8 \
-    --out-dir results/scaling/medium-star-$it
-done
+uv run run.py STAR sil tsp,cvrp \
+  --size medium \
+  --iterations 100 \
+  --STAR-samples 100 \
+  --min-new-edges 8 \
+  --out-dir results/scaling/medium-star-100
 ```
+
+`results/scaling/medium-star-100/STAR_progress.csv` records
+`completed_iterations=0..100`, so the 10/20/40/60/100 budget points are read
+from one run instead of rerunning shorter prefixes.
 
 ### Sampling only / no memory
 
 ```bash
-for it in 10 20 40 60 100; do
-  uv run run.py STAR sil cvrp \
-    --size medium \
-    --iterations $it \
-    --STAR-samples 100 \
-    --min-new-edges 8 \
-    --no-STAR-memory \
-    --out-dir results/scaling/medium-nomem-$it
-done
+uv run run.py STAR sil tsp,cvrp \
+  --size medium \
+  --iterations 100 \
+  --STAR-samples 100 \
+  --min-new-edges 8 \
+  --no-STAR-memory \
+  --out-dir results/scaling/medium-nomem-100
 ```
 
 ---

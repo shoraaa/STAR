@@ -91,26 +91,25 @@ run_star "table2-medium-recon" \
   --no-refine \
   --out-dir results/medium-recon
 
-for it in 10 20 40 60 100; do
-  run_star "fig1-medium-star-${it}" \
-    STAR sil tsp,cvrp \
-    --size medium \
-    --iterations "${it}" \
-    --STAR-samples 100 \
-    --min-new-edges 8 \
-    --out-dir "results/scaling/medium-star-${it}"
-done
+# STAR_progress.csv in each out-dir records the full cost/gap curve for
+# completed_iterations=0..100, so a single max-budget run replaces separate
+# 10/20/40/60/100 reruns.
+run_star "fig1-medium-star-100" \
+  STAR sil tsp,cvrp \
+  --size medium \
+  --iterations 100 \
+  --STAR-samples 100 \
+  --min-new-edges 8 \
+  --out-dir results/scaling/medium-star-100
 
-for it in 10 20 40 60 100; do
-  run_star "fig1-medium-nomem-${it}" \
-    STAR sil tsp,cvrp \
-    --size medium \
-    --iterations "${it}" \
-    --STAR-samples 100 \
-    --min-new-edges 8 \
-    --no-STAR-memory \
-    --out-dir "results/scaling/medium-nomem-${it}"
-done
+run_star "fig1-medium-nomem-100" \
+  STAR sil tsp,cvrp \
+  --size medium \
+  --iterations 100 \
+  --STAR-samples 100 \
+  --min-new-edges 8 \
+  --no-STAR-memory \
+  --out-dir results/scaling/medium-nomem-100
 
 run_star "table3-ablation-full" \
   STAR sil tsp,cvrp \
@@ -188,13 +187,13 @@ for k in 8 16 32 64 128; do
     --out-dir "results/sens/k-${k}"
 done
 
-run_star "table1-large-main" \
-  STAR sil tsp,cvrp \
-  --size large \
-  --iterations 100 \
-  --STAR-samples 100 \
-  --min-new-edges 4 \
-  --out-dir results/large-main
+# run_star "table1-large-main" \
+#   STAR sil tsp,cvrp \
+#   --size large \
+#   --iterations 100 \
+#   --STAR-samples 100 \
+#   --min-new-edges 4 \
+#   --out-dir results/large-main
 
 for backbone in nearest sil lehd; do
   run_star "table7-backbone-${backbone}-small" \
