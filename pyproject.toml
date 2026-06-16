@@ -12,6 +12,7 @@ dependencies = [
     "torch",
     "torchvision",
     "tqdm",
+    "entmax>=1.3",
 ]
 
 [build-system]

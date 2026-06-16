@@ -1,0 +1,2 @@
+status,strategy_id,policy_id,problem,instance,final_cost,gap,time,original_time,runtime_scale,runtime_scale_basis,source_tree,source_run,source_csv
+ok,STAR,nearest,cvrp,X-n101-k25,36797.000000,33.365953,0.015239,0.021945,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,no-refine-smoke-cvrp,results/no-refine-smoke-cvrp/results.csv

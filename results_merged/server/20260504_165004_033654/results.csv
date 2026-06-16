@@ -1,0 +1,2 @@
+status,strategy_id,policy_id,problem,instance,final_cost,gap,time,original_time,runtime_scale,runtime_scale_basis,source_tree,source_run,source_csv
+ok,lehd_rrc,nearest,tsp,wi29,29337.000000,6.281926,4.542377,4.542377,1,server-measured,server,20260504_165004_033654,results_server/results/20260504_165004_033654/results.csv

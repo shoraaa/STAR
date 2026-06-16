@@ -1,0 +1,2 @@
+status,strategy_id,policy_id,problem,instance,final_cost,gap,time,original_time,runtime_scale,runtime_scale_basis,source_tree,source_run,source_csv
+ok,STAR,nearest,tsp,wi29,32164,16.523566,0.001037,0.001106,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_232902,results/20260504_232902/results.csv

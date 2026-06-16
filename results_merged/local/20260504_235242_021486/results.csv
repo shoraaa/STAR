@@ -1,0 +1,16 @@
+status,strategy_id,policy_id,problem,instance,final_cost,gap,time,original_time,runtime_scale,runtime_scale_basis,source_tree,source_run,source_csv
+ok,STAR,sil,tsp,wi29,32164,16.523566,0.001127,0.001202,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,dj38,6800,2.163462,0.000624,0.000666,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,eil51,502,17.840376,0.000878,0.000937,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,berlin52,8980,19.066561,0.000756,0.000807,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,st70,760,12.592593,0.001203,0.001283,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,eil76,627,16.542751,0.001297,0.001384,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,pr76,143096,32.301519,0.001269,0.001354,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,rat99,1437,18.662263,0.001591,0.001697,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,kroA100,26133,22.793910,0.001639,0.001749,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,kroB100,26023,17.533083,0.001626,0.001735,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,kroC100,23564,13.566919,0.001665,0.001776,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,kroD100,26390,23.931624,0.001637,0.001747,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,kroE100,24907,12.864782,0.001685,0.001798,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,rd100,9769,23.501896,0.036694,0.039148,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv
+ok,STAR,sil,tsp,eil101,737,17.170111,0.001569,0.001674,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,20260504_235242_021486,results/20260504_235242_021486/results.csv

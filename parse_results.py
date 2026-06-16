@@ -15,10 +15,12 @@ from typing import Iterable
 
 
 DEFAULT_RESULTS_DIR = Path("results")
+BENCH_ROOT = Path("survey/0_data_survey")
 GROUP_FIELDS = ("problem", "strategy_id", "policy_id")
 SUMMARY_FIELDS = (
     "source",
     "problem",
+    "size_group",
     "strategy_id",
     "policy_id",
     "rows",
@@ -52,6 +54,11 @@ def parse_args() -> argparse.Namespace:
         "--all-rows",
         action="store_true",
         help="include failed/unsupported rows in gap/time averages when numeric values are present",
+    )
+    parser.add_argument(
+        "--by-size-group",
+        action="store_true",
+        help="also group rows by instance size: <1K, [1K,10K), >=10K",
     )
     return parser.parse_args()
 
@@ -90,10 +97,71 @@ def numeric(value: str | None) -> float | None:
         return None
 
 
-def summarize(rows: Iterable[dict[str, str]], *, include_all_rows: bool) -> list[dict[str, str]]:
+def read_dimension_and_name(path: Path) -> tuple[int | None, str]:
+    dimension: int | None = None
+    name = path.stem
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if line.startswith("NAME"):
+            name = line.split(":", 1)[-1].strip() if ":" in line else line.split()[-1].strip()
+        elif line.startswith("DIMENSION"):
+            value = line.split(":", 1)[-1] if ":" in line else line.split()[-1]
+            try:
+                dimension = int(value.strip())
+            except ValueError:
+                dimension = None
+        elif line in {"NODE_COORD_SECTION", "DEMAND_SECTION"} and dimension is not None:
+            break
+    return dimension, name
+
+
+def instance_dimensions() -> dict[tuple[str, str], int]:
+    dimensions: dict[tuple[str, str], int] = {}
+    for problem, directory, suffix in (
+        ("tsp", BENCH_ROOT / "survey_bench_tsp", ".tsp"),
+        ("cvrp", BENCH_ROOT / "survey_bench_cvrp", ".vrp"),
+    ):
+        for path in directory.glob(f"*{suffix}"):
+            dimension, name = read_dimension_and_name(path)
+            if dimension is None:
+                continue
+            dimensions[(problem, path.stem)] = dimension
+            dimensions[(problem, name)] = dimension
+    return dimensions
+
+
+def size_group(dimension: int | None) -> str:
+    if dimension is None:
+        return "unknown"
+    if dimension < 1000:
+        return "<1K"
+    if dimension < 10000:
+        return "[1K,10K)"
+    return ">=10K"
+
+
+def summarize(
+    rows: Iterable[dict[str, str]],
+    *,
+    include_all_rows: bool,
+    by_size_group: bool,
+    dimensions: dict[tuple[str, str], int],
+) -> list[dict[str, str]]:
+    group_fields = ("problem", "size_group", "strategy_id", "policy_id") if by_size_group else (
+        "problem",
+        "strategy_id",
+        "policy_id",
+    )
     groups: dict[tuple[str, ...], list[dict[str, str]]] = defaultdict(list)
     for row in rows:
-        groups[tuple(row.get(field, "") for field in GROUP_FIELDS)].append(row)
+        row = dict(row)
+        if by_size_group:
+            problem = row.get("problem", "")
+            instance = row.get("instance", "")
+            row["size_group"] = size_group(dimensions.get((problem, instance)))
+        else:
+            row["size_group"] = ""
+        groups[tuple(row.get(field, "") for field in group_fields)].append(row)
 
     summaries: list[dict[str, str]] = []
     for key, group_rows in sorted(groups.items()):
@@ -107,8 +175,9 @@ def summarize(rows: Iterable[dict[str, str]], *, include_all_rows: bool) -> list
         summaries.append(
             {
                 "problem": key[0],
-                "strategy_id": key[1],
-                "policy_id": key[2],
+                "size_group": key[1] if by_size_group else "",
+                "strategy_id": key[2] if by_size_group else key[1],
+                "policy_id": key[3] if by_size_group else key[2],
                 "rows": str(len(group_rows)),
                 "ok": str(ok_count),
                 "failed": str(failed_count),
@@ -139,19 +208,30 @@ def main() -> int:
     csv_paths = result_csvs(args.paths)
     if not csv_paths:
         raise SystemExit("No results.csv files found.")
+    dimensions = instance_dimensions() if args.by_size_group else {}
 
     output_rows: list[dict[str, str]] = []
     if args.combined:
         all_rows: list[dict[str, str]] = []
         for csv_path in csv_paths:
             all_rows.extend(read_rows(csv_path))
-        for row in summarize(all_rows, include_all_rows=args.all_rows):
+        for row in summarize(
+            all_rows,
+            include_all_rows=args.all_rows,
+            by_size_group=args.by_size_group,
+            dimensions=dimensions,
+        ):
             output_rows.append({"source": "combined", **row})
     else:
         for csv_path in csv_paths:
             result_dir = str(csv_path.parent)
             rows = read_rows(csv_path)
-            for row in summarize(rows, include_all_rows=args.all_rows):
+            for row in summarize(
+                rows,
+                include_all_rows=args.all_rows,
+                by_size_group=args.by_size_group,
+                dimensions=dimensions,
+            ):
                 output_rows.append({"source": result_dir, **row})
 
     print_table(output_rows)

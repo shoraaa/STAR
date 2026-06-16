@@ -97,7 +97,7 @@ class VRPEnv:
             # filename = bb + f'/ba_survey/cvrplib/{inst_names}.vrp'
             vrplib_root = os.environ.get(
                 'NRS_SURVEY_CVRP_DIR',
-                '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_cvrp',
+                '/home/shora/Research/STAR/survey/0_data_survey/survey_bench_cvrp',
             )
             filename = os.path.join(vrplib_root, f'{inst_names}.vrp')
             name, dimension, locs, demand, capacity, cost = self.CVRPLIBReader(filename)

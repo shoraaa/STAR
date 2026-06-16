@@ -1,0 +1,11 @@
+{
+  "basis_run": "medium-main",
+  "local_root": "results",
+  "merged_rows": 1358,
+  "runtime_scales_local_over_server": {
+    "cvrp": 1.4400404468851538,
+    "tsp": 1.066885922974813
+  },
+  "server_root": "results_server/results",
+  "skipped_local_duplicates": 114
+}

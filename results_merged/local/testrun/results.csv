@@ -1,0 +1,16 @@
+status,strategy_id,policy_id,problem,instance,final_cost,gap,time,original_time,runtime_scale,runtime_scale_basis,source_tree,source_run,source_csv
+ok,STAR,sil,cvrp,X-n101-k25,29259.000000,6.045450,5.784108,8.329350,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n106-k14,27438.000000,4.081633,6.983725,10.056846,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n110-k13,15936.000000,6.445795,6.040566,8.698660,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n115-k10,14164.000000,11.116341,6.181357,8.901404,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n120-k6,14028.000000,5.220522,8.916375,12.839940,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n125-k30,59499.000000,7.130125,5.524525,7.955539,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n129-k18,31171.000000,7.709053,8.718892,12.555557,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n134-k13,11309.000000,3.600220,7.616371,10.967883,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n139-k10,15338.000000,12.862399,7.718333,11.114711,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n143-k7,17004.000000,8.305732,9.531032,13.725071,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n148-k46,45469.000000,4.651537,9.426714,13.574850,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n153-k22,22833.000000,7.601320,8.698349,12.525974,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n157-k13,17610.000000,4.349372,8.753835,12.605877,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n162-k11,15374.000000,8.742396,9.536082,13.732344,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv
+ok,STAR,sil,cvrp,X-n167-k10,21952.000000,6.786010,10.909573,15.710227,1.44004044689,local-divided-by-medium-main-cvrp-ratio,local,testrun,results/testrun/results.csv

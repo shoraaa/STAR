@@ -1,0 +1,2 @@
+status,strategy_id,policy_id,problem,instance,final_cost,gap,time,original_time,runtime_scale,runtime_scale_basis,source_tree,source_run,source_csv
+ok,STAR,nearest,tsp,wi29,27603.000000,0.000000,0.053312,0.056878,1.06688592297,local-divided-by-medium-main-tsp-ratio,local,progress-smoke,results/progress-smoke/results.csv

@@ -1,0 +1,6 @@
+status,strategy_id,policy_id,problem,instance,final_cost,gap,time,original_time,runtime_scale,runtime_scale_basis,source_tree,source_run,source_csv
+ok,STAR,sil,tsp,portcgen-1000-1000,12425336.000000,9.114489,1.729780,1.729780,1,server-measured,server,20260504_165518_615587,results_server/results/20260504_165518_615587/results.csv
+ok,STAR,sil,tsp,portcgen-1000-10001,12371288.000000,8.741990,1.392899,1.392899,1,server-measured,server,20260504_165518_615587,results_server/results/20260504_165518_615587/results.csv
+ok,STAR,sil,tsp,portcgen-1000-10002,11960450.000000,10.183451,1.444784,1.444784,1,server-measured,server,20260504_165518_615587,results_server/results/20260504_165518_615587/results.csv
+ok,STAR,sil,tsp,portcgen-1000-10003,13003558.000000,9.398099,1.688721,1.688721,1,server-measured,server,20260504_165518_615587,results_server/results/20260504_165518_615587/results.csv
+ok,STAR,sil,tsp,portcgen-1000-10004,12616089.000000,9.705522,1.593504,1.593504,1,server-measured,server,20260504_165518_615587,results_server/results/20260504_165518_615587/results.csv
