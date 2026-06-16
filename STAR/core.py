@@ -488,14 +488,6 @@ class NativeTSPNeuralPolicy:
             return
         raw = torch.tensor([instance.coords[node] for node in node_ids], dtype=torch.float32).unsqueeze(0)
         raw_dist = None
-        if self.policy_id == "bq":
-            raw64 = raw.to(dtype=torch.float64)
-            raw_dist = torch.linalg.vector_norm(raw64[:, :, None, :] - raw64[:, None, :, :], dim=-1)
-            if instance.edge_weight_type == "CEIL_2D":
-                raw_dist = torch.ceil(raw_dist)
-            elif instance.edge_weight_type == "EUC_2D":
-                raw_dist = torch.floor(raw_dist + 0.5)
-            raw_dist = raw_dist.to(dtype=torch.float32)
         normalized = normalize_coords_for_policy(raw, self.policy_id, "tsp")
         if CUDA_AVAILABLE:
             raw = raw.to(device=DEFAULT_TORCH_DEVICE)
