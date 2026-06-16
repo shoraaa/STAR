@@ -6,6 +6,7 @@ CUDA_DEVICE_NUM = 0
 ##########################################################################################
 import os
 import sys
+from pathlib import Path
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, "..")  # for problem_def
 sys.path.insert(0, "../..")  # for utils
@@ -35,6 +36,17 @@ model_load_path = 'result/20230817_235537_train'
 model_load_epoch = 40
 
 
+def _survey_benchmark_dir(name):
+    env_name = f"NRS_SURVEY_{name.upper()}_DIR"
+    if os.environ.get(env_name):
+        return os.environ[env_name]
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "0_data_survey" / f"survey_bench_{name}"
+        if candidate.exists():
+            return str(candidate)
+    return str(Path(__file__).resolve().parent / "0_data_survey" / f"survey_bench_{name}")
+
+
 if test_in_vrplib == True:
     problem_size = 0
 
@@ -59,10 +71,7 @@ b = os.path.abspath(".").replace('\\', '/')
 env_params = {
     'mode': mode,
     'test_in_vrplib':test_in_vrplib,
-    'vrplib_path': os.environ.get(
-        'NRS_SURVEY_CVRP_DIR',
-        '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_cvrp',
-    ),
+    'vrplib_path': _survey_benchmark_dir("cvrp"),
     'data_path': b + f"/data/{test_paras[problem_size][0]}",
     'sub_path': False,
     'RRC_budget': RRC_budget

@@ -1,10 +1,22 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from tqdm import tqdm
+
+
+def _survey_benchmark_dir(name):
+    env_name = f"NRS_SURVEY_{name.upper()}_DIR"
+    if os.environ.get(env_name):
+        return os.environ[env_name]
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "0_data_survey" / f"survey_bench_{name}"
+        if candidate.exists():
+            return str(candidate)
+    return str(Path(__file__).resolve().parent / "0_data_survey" / f"survey_bench_{name}")
 
 
 @dataclass
@@ -121,7 +133,7 @@ class TSPEnv:
             # # test  TSPLIBReader
             # filename = bb + f'/dataset2/tsplib/{inst_names}.tsp'
 
-            bb = os.environ.get('NRS_SURVEY_TSP_DIR', '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_tsp')
+            bb = _survey_benchmark_dir("tsp")
             filename = f'{bb}/{inst_names}.tsp'
 
             # print(filename)

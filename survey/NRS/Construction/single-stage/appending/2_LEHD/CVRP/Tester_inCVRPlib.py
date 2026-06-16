@@ -1,4 +1,6 @@
 from logging import getLogger
+import os
+from pathlib import Path
 
 import torch
 
@@ -8,6 +10,17 @@ from utils.utils import *
 
 import time
 import numpy as np
+
+
+def _survey_benchmark_dir(name):
+    env_name = f"NRS_SURVEY_{name.upper()}_DIR"
+    if os.environ.get(env_name):
+        return os.environ[env_name]
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "0_data_survey" / f"survey_bench_{name}"
+        if candidate.exists():
+            return str(candidate)
+    return str(Path(__file__).resolve().parent / "0_data_survey" / f"survey_bench_{name}")
 
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
@@ -226,10 +239,7 @@ class VRPTester():
         validate_problem_sizes = []
         validate_opt_values = []
 
-        survey_cvrp_dir = os.environ.get(
-            'NRS_SURVEY_CVRP_DIR',
-            '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_cvrp',
-        )
+        survey_cvrp_dir = _survey_benchmark_dir("cvrp")
         for i in range(len(self.inst_names)):
             # filename = f'/ba_survey/cvrplib/{self.inst_names[i]}.vrp'
             filename = os.path.join(survey_cvrp_dir, f"{self.inst_names[i]}.vrp")

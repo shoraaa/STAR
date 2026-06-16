@@ -7,6 +7,7 @@ CUDA_DEVICE_NUM = 0
 # Path Config
 import os
 import sys
+from pathlib import Path
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, "..")  # for problem_def
 sys.path.insert(0, "../..")  # for utils
@@ -30,8 +31,20 @@ RRC_budget = 0         # RRC budget
 model_load_path = 'result/20230509_153705_train'
 model_load_epoch = 150
 
+
+def _survey_benchmark_dir(name):
+    env_name = f"NRS_SURVEY_{name.upper()}_DIR"
+    if os.environ.get(env_name):
+        return os.environ[env_name]
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "0_data_survey" / f"survey_bench_{name}"
+        if candidate.exists():
+            return str(candidate)
+    return str(Path(__file__).resolve().parent / "0_data_survey" / f"survey_bench_{name}")
+
+
 # ! === 新增：TSPLIB 遍历与分桶控制（和 ICAM 一致，可自定义） ===
-tsplib_dir = os.environ.get('NRS_SURVEY_TSP_DIR', '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_tsp')
+tsplib_dir = _survey_benchmark_dir("tsp")
 # 例：与 ICAM 一致的三档（默认）
 scale_ranges = [[0, 1000], [1000, 10000], [10000, 100001]]
 if 'NRS_SURVEY_SIZE_LOW' in os.environ and 'NRS_SURVEY_SIZE_HIGH' in os.environ:

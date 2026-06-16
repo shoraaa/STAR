@@ -6,6 +6,7 @@ CUDA_DEVICE_NUM = 0
 # Path Config
 import os
 import sys
+from pathlib import Path
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, "..")  # for problem_def
 sys.path.insert(0, "../..")  # for utils
@@ -44,9 +45,22 @@ test_batch_size = test_paras[problem_size]["test_batch_size"]
 
 b = os.path.abspath(".").replace('\\', '/')
 
+
+def _survey_data_file(*parts):
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "0_data_survey" / Path(*parts)
+        if candidate.exists():
+            return str(candidate)
+    return str(Path(__file__).resolve().parent / "0_data_survey" / Path(*parts))
+
+
+def _synthetic_tsp_path(size, episodes):
+    return _survey_data_file("survey_synthetic_tsp", f"test_tsp{size}_n{episodes}_lkh.txt")
+
+
 env_params = {
     'mode': mode,
-    'data_path': f'/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_synthetic_tsp/test_tsp{problem_size}_n{test_episodes}_lkh.txt',
+    'data_path': _synthetic_tsp_path(problem_size, test_episodes),
 
     'sub_path': False,
     'RRC_budget': RRC_budget
@@ -168,7 +182,7 @@ if __name__ == "__main__":
         test_episodes = test_paras[problem_size]["test_episodes"]
         test_batch_size = test_paras[problem_size]["test_batch_size"]
     
-    env_params['data_path'] = f'/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_synthetic_tsp/test_tsp{problem_size}_n{test_episodes}_lkh.txt'
+    env_params['data_path'] = _synthetic_tsp_path(problem_size, test_episodes)
     env_params['RRC_budget'] = RRC_budget
     
     tester_params['test_episodes'] = test_episodes

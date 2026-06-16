@@ -1,4 +1,5 @@
 from logging import getLogger
+import os
 from pathlib import Path
 import sys
 
@@ -10,6 +11,17 @@ from utils.utils import *
 
 import time
 import numpy as np
+
+
+def _survey_benchmark_dir(name):
+    env_name = f"NRS_SURVEY_{name.upper()}_DIR"
+    if os.environ.get(env_name):
+        return os.environ[env_name]
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "0_data_survey" / f"survey_bench_{name}"
+        if candidate.exists():
+            return str(candidate)
+    return str(Path(__file__).resolve().parent / "0_data_survey" / f"survey_bench_{name}")
 
 for _parent in Path(__file__).resolve().parents:
     if (_parent / "NRS" / "native_forward_swap.py").exists():
@@ -234,9 +246,10 @@ class VRPTester():
         validate_problem_sizes = []
         validate_opt_values = []
 
+        survey_cvrp_dir = _survey_benchmark_dir("cvrp")
         for i in range(len(self.inst_names)):
             # filename = f'/ba_survey/cvrplib/{self.inst_names[i]}.vrp'
-            filename = f'{self.env_params.get("vrplib_path", "/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_cvrp")}/{self.inst_names[i]}.vrp'
+            filename = os.path.join(self.env_params.get("vrplib_path", survey_cvrp_dir), f"{self.inst_names[i]}.vrp")
             name, dimension, locs, demand, capacity, cost = self.env.CVRPLIBReader(filename)
             #         return name, int(dimension), locs, demand, capacity, cost
             if name is not None:
