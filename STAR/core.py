@@ -4703,26 +4703,33 @@ def instance_paths(problem: str, size: str | None) -> list[Path]:
         if dimension is None:
             continue
         dimensioned_paths.append((dimension, path))
+    by_dimension = sorted(dimensioned_paths, key=lambda item: (item[0], item[1].name))
     if size == "dev":
-        return [path for _dimension, path in sorted(dimensioned_paths, key=lambda item: (item[0], item[1].name))[:15]]
+        return [path for _dimension, path in by_dimension[:15]]
     if size == "dev-medium3":
         return [
             path
-            for dimension, path in sorted(dimensioned_paths, key=lambda item: (item[0], item[1].name))
+            for dimension, path in by_dimension
             if 1000 <= dimension < 10000
         ][:3]
     if size == "dev-medium":
         return [
             path
-            for dimension, path in sorted(dimensioned_paths, key=lambda item: (item[0], item[1].name))
+            for dimension, path in by_dimension
             if 1000 <= dimension < 10000
         ][:5]
 
+    if size == "full":
+        grouped = (
+            [(dimension, path) for dimension, path in by_dimension if dimension < 1000]
+            + [(dimension, path) for dimension, path in by_dimension if 1000 <= dimension < 10000]
+            + [(dimension, path) for dimension, path in by_dimension if dimension >= 10000]
+        )
+        return [path for _dimension, path in grouped]
+
     paths = []
-    for dimension, path in sorted(dimensioned_paths, key=lambda item: item[1].name):
-        if size == "full":
-            paths.append(path)
-        elif size == "small" and dimension < 1000:
+    for dimension, path in by_dimension:
+        if size == "small" and dimension < 1000:
             paths.append(path)
         elif size == "medium" and 1000 <= dimension < 10000:
             paths.append(path)
@@ -4961,8 +4968,7 @@ def row(
     elapsed: float | str = "",
     reason: str = "",
 ) -> dict[str, str]:
-    del reason
-    return {
+    result = {
         "status": status,
         "strategy_id": strategy_id,
         "policy_id": policy_id,
@@ -4972,12 +4978,52 @@ def row(
         "gap": f"{gap:.6f}" if isinstance(gap, float) else str(gap),
         "time": f"{elapsed:.6f}" if isinstance(elapsed, float) else str(elapsed),
     }
+    if reason:
+        result["reason"] = reason
+    return result
+
+
+def failed_instance_stub(problem: str, path: Path) -> Instance:
+    name = path.stem
+    try:
+        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if line.startswith("NAME"):
+                name = line.split(":", 1)[-1].strip() if ":" in line else line.split()[-1].strip()
+                break
+            if line in {"NODE_COORD_SECTION", "DEMAND_SECTION"}:
+                break
+    except OSError:
+        pass
+    return Instance(name, problem, {}, {}, None, None, path)
+
+
+def is_oom_exception(exc: BaseException) -> bool:
+    if isinstance(exc, MemoryError):
+        return True
+    cuda_oom = getattr(torch.cuda, "OutOfMemoryError", None)
+    if cuda_oom is not None and isinstance(exc, cuda_oom):
+        return True
+    message = str(exc).lower()
+    return "out of memory" in message or "cuda error: out of memory" in message
 
 
 def csv_items(value: str, all_values: Sequence[str]) -> list[str]:
     if value == "all":
         return list(all_values)
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def normalize_strategy_policy_selection(strategies: str, policies: str) -> tuple[str, str]:
+    """Treat a bare constructive policy name as the default greedy baseline."""
+    if policies != "nearest":
+        return strategies, policies
+    strategy_items = csv_items(strategies, search_strategy_ids())
+    strategy_set = set(search_strategy_ids())
+    policy_set = set(append_policy_ids())
+    if strategy_items and all(item in policy_set and item not in strategy_set for item in strategy_items):
+        return "greedy", ",".join(strategy_items)
+    return strategies, policies
 
 
 def run_matrix(
@@ -5014,60 +5060,94 @@ def run_matrix(
     STAR_trace: bool = False,
     STAR_profile: bool = False,
 ) -> list[dict[str, str]]:
+    strategies, policies = normalize_strategy_policy_selection(strategies, policies)
     rows = []
     STAR_trace_rows: list[dict[str, str]] = []
     STAR_profile_rows: list[dict[str, str]] = []
     out_dir.mkdir(parents=True, exist_ok=True)
+    results_path = out_dir / "results.csv"
+    status_path = out_dir / "run_status.jsonl"
     progress_path = out_dir / "STAR_progress.csv"
     if stream:
         print_stream_header()
-    with progress_path.open("w", encoding="utf-8", newline="") as progress_handle:
+    with (
+        progress_path.open("w", encoding="utf-8", newline="") as progress_handle,
+        results_path.open("w", encoding="utf-8", newline="") as results_handle,
+        status_path.open("w", encoding="utf-8") as status_handle,
+    ):
         progress_writer = csv.DictWriter(progress_handle, fieldnames=STAR_PROGRESS_FIELDS)
         progress_writer.writeheader()
+        results_writer = csv.DictWriter(results_handle, fieldnames=FIELDS)
+        results_writer.writeheader()
+        results_handle.flush()
 
         def write_STAR_progress(progress_row: dict[str, str]) -> None:
             progress_writer.writerow({field: progress_row.get(field, "") for field in STAR_PROGRESS_FIELDS})
             progress_handle.flush()
 
+        def write_result(result_row: dict[str, str]) -> None:
+            results_writer.writerow({field: result_row.get(field, "") for field in FIELDS})
+            results_handle.flush()
+            status_handle.write(json.dumps(result_row, sort_keys=True) + "\n")
+            status_handle.flush()
+
         for strategy_id in csv_items(strategies, search_strategy_ids()):
             for policy_id in csv_items(policies, append_policy_ids()):
                 for problem in csv_items(problems, ["tsp", "cvrp"]):
                     for path in instance_paths(problem, size):
-                        result = run_one(
-                            strategy_id,
-                            policy_id,
-                            problem,
-                            seed,
-                            instance=load_instance_path(problem, path),
-                            iterations=iterations,
-                            min_new_edges=min_new_edges,
-                            refine_k=refine_k,
-                            refine=refine,
-                            neural_knn_k=neural_knn_k,
-                            neural_backup_k=neural_backup_k,
-                            neural_knn_mask=neural_knn_mask,
-                            STAR_samples=STAR_samples,
-                            STAR_memory=STAR_memory,
-                            STAR_memory_k=STAR_memory_k,
-                            STAR_memory_rho=STAR_memory_rho,
-                            STAR_memory_tau_min=STAR_memory_tau_min,
-                            STAR_memory_tau_max=STAR_memory_tau_max,
-                            STAR_memory_alpha=STAR_memory_alpha,
-                            STAR_start_mode=STAR_start_mode,
-                            STAR_start_probes=STAR_start_probes,
-                            STAR_start_cost_weight=STAR_start_cost_weight,
-                            STAR_start_policy_weight=STAR_start_policy_weight,
-                            STAR_start_memory_weight=STAR_start_memory_weight,
-                            STAR_memory_update_mode=STAR_memory_update_mode,
-                            STAR_advantage_scale=STAR_advantage_scale,
-                            STAR_advantage_min=STAR_advantage_min,
-                            STAR_trace=STAR_trace,
-                            STAR_profile=STAR_profile,
-                            STAR_trace_rows=STAR_trace_rows,
-                            STAR_profile_rows=STAR_profile_rows,
-                            STAR_progress_callback=write_STAR_progress,
-                        )
+                        instance: Instance | None = None
+                        start = time.perf_counter()
+                        try:
+                            instance = load_instance_path(problem, path)
+                            result = run_one(
+                                strategy_id,
+                                policy_id,
+                                problem,
+                                seed,
+                                instance=instance,
+                                iterations=iterations,
+                                min_new_edges=min_new_edges,
+                                refine_k=refine_k,
+                                refine=refine,
+                                neural_knn_k=neural_knn_k,
+                                neural_backup_k=neural_backup_k,
+                                neural_knn_mask=neural_knn_mask,
+                                STAR_samples=STAR_samples,
+                                STAR_memory=STAR_memory,
+                                STAR_memory_k=STAR_memory_k,
+                                STAR_memory_rho=STAR_memory_rho,
+                                STAR_memory_tau_min=STAR_memory_tau_min,
+                                STAR_memory_tau_max=STAR_memory_tau_max,
+                                STAR_memory_alpha=STAR_memory_alpha,
+                                STAR_start_mode=STAR_start_mode,
+                                STAR_start_probes=STAR_start_probes,
+                                STAR_start_cost_weight=STAR_start_cost_weight,
+                                STAR_start_policy_weight=STAR_start_policy_weight,
+                                STAR_start_memory_weight=STAR_start_memory_weight,
+                                STAR_memory_update_mode=STAR_memory_update_mode,
+                                STAR_advantage_scale=STAR_advantage_scale,
+                                STAR_advantage_min=STAR_advantage_min,
+                                STAR_trace=STAR_trace,
+                                STAR_profile=STAR_profile,
+                                STAR_trace_rows=STAR_trace_rows,
+                                STAR_profile_rows=STAR_profile_rows,
+                                STAR_progress_callback=write_STAR_progress,
+                            )
+                        except Exception as exc:
+                            if CUDA_AVAILABLE and is_oom_exception(exc):
+                                torch.cuda.empty_cache()
+                            failed_instance = instance if instance is not None else failed_instance_stub(problem, path)
+                            result = row(
+                                "failed",
+                                strategy_id,
+                                policy_id,
+                                problem,
+                                failed_instance,
+                                elapsed=time.perf_counter() - start,
+                                reason=f"{type(exc).__name__}: {exc}",
+                            )
                         rows.append(result)
+                        write_result(result)
                         if stream:
                             print_stream_row(result)
     write_outputs(rows, out_dir, STAR_trace_rows, STAR_profile_rows)
@@ -5084,7 +5164,8 @@ def write_outputs(
     with (out_dir / "results.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()
-        writer.writerows(rows)
+        for item in rows:
+            writer.writerow({field: item.get(field, "") for field in FIELDS})
     with (out_dir / "run_status.jsonl").open("w", encoding="utf-8") as handle:
         for item in rows:
             handle.write(json.dumps(item, sort_keys=True) + "\n")
