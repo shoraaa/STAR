@@ -4700,7 +4700,7 @@ def load_instance_path(problem: str, path: Path) -> Instance:
 def instance_paths(problem: str, size: str | None) -> list[Path]:
     if size is None:
         return [DEFAULT_TSP if problem == "tsp" else DEFAULT_CVRP]
-    if size not in {"dev", "dev-medium3", "dev-medium", "small", "medium", "large"}:
+    if size not in {"dev", "dev-medium3", "dev-medium", "small", "medium", "large", "full"}:
         raise ValueError(f"unknown size: {size}")
 
     directory = TSP_BENCH_DIR if problem == "tsp" else CVRP_BENCH_DIR
@@ -4728,7 +4728,9 @@ def instance_paths(problem: str, size: str | None) -> list[Path]:
 
     paths = []
     for dimension, path in sorted(dimensioned_paths, key=lambda item: item[1].name):
-        if size == "small" and dimension < 1000:
+        if size == "full":
+            paths.append(path)
+        elif size == "small" and dimension < 1000:
             paths.append(path)
         elif size == "medium" and 1000 <= dimension < 10000:
             paths.append(path)
@@ -5196,12 +5198,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=int, default=None, help="accepted for CLI compatibility; unused by in-process runner")
     parser.add_argument(
         "--size",
-        choices=["dev", "dev-medium3", "dev-medium", "small", "medium", "large"],
+        choices=["dev", "dev-medium3", "dev-medium", "small", "medium", "large", "full"],
         default=None,
         help=(
             "run benchmark instances in the selected size bucket; dev runs the first 15 smallest "
             "instances per requested problem; dev-medium3 runs the first 3 medium instances; "
-            "dev-medium runs the first 5 medium instances"
+            "dev-medium runs the first 5 medium instances; full runs every benchmark instance"
         ),
     )
     parser.add_argument(
