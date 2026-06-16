@@ -31,6 +31,7 @@ results/
 output/
 *.log
 .omx/
+pretrained-assets.tar.gz
 
 # Data (large files, download separately)
 survey/0_data_survey/**
