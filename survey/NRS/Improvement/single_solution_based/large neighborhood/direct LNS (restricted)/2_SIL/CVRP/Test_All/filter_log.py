@@ -78,7 +78,7 @@ def parse_log(file_path):
 
 if __name__ == "__main__":
     # Explicitly define the log file path
-    base_dir = "/home/shora/Research/NRS_Survey/NRS/Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/2_SIL/CVRP/Test_All/result_survey_cvrp"
+    base_dir = "../../../../../../../../NRS/Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/2_SIL/CVRP/Test_All/result_survey_cvrp"
     # sub_dir = "20251110_020903_test_SIL_PRC1000_model_CVRP1K/log.txt"
     # sub_dir = "20251121_221237_test_SIL_PRC1000_model_CVRP5K/log.txt"
     # sub_dir = "20251121_221606_test_SIL_PRC1000_model_CVRP10K/log.txt"

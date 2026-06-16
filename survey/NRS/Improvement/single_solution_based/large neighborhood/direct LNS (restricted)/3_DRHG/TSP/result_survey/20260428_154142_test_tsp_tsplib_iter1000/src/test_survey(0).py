@@ -53,7 +53,7 @@ knn_k = [20, 1000]
 
 
 USE_LIB_MODE = True
-LIB_PATH = '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_tsp'
+LIB_PATH = '../../../../../../../../../../0_data_survey/survey_bench_tsp'
 
 problem_size = 'tsplib'
 BUDGET = 1000

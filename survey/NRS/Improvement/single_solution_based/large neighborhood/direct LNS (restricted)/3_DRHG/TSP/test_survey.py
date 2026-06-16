@@ -58,7 +58,7 @@ knn_k = [20, 1000]
 USE_LIB_MODE = True
 LIB_PATH = os.environ.get(
     'NRS_SURVEY_TSP_DIR',
-    '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_tsp',
+    '../../../../../../../0_data_survey/survey_bench_tsp',
 )
 
 problem_size = 'tsplib'

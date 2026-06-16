@@ -94,7 +94,7 @@ def print_stats(buckets):
 
 if __name__ == "__main__":
     # Default log file path from context
-    default_log_path = "/home/shora/Research/NRS_Survey/NRS/Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/3_DRHG/TSP/result_survey_no_finetune/20251107_003647_test_tsp_tsplib_iter1000/log.txt"
+    default_log_path = "../../../../../../../NRS/Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/3_DRHG/TSP/result_survey_no_finetune/20251107_003647_test_tsp_tsplib_iter1000/log.txt"
     
     parser = argparse.ArgumentParser(description='Analyze TSP log file stats with filtering.')
     parser.add_argument('log_path', nargs='?', default=default_log_path, help='Path to the log file')

@@ -62,7 +62,7 @@ env_params = {
     'mode': 'test',
     'use_model': use_model, 
     'load_way': data_load_way,
-    'data_path': f'/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_synthetic_tsp/test_tsp{problem_size}_n{test_episodes}_lkh.txt',
+    'data_path': f'../../../../../../../0_data_survey/survey_synthetic_tsp/test_tsp{problem_size}_n{test_episodes}_lkh.txt',
     'test_in_tsplib':False,
     'tsplib_path': None,       
 }
@@ -178,7 +178,7 @@ if __name__ == "__main__":
         knn_k = [20, k_max]
         test_episodes = test_paras[problem_size]["test_episodes"]
         test_batch_size = test_paras[problem_size]["test_batch_size"]
-        env_params['data_path'] = f'/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_synthetic_tsp/test_tsp{problem_size}_n{test_episodes}_lkh.txt'
+        env_params['data_path'] = f'../../../../../../../0_data_survey/survey_synthetic_tsp/test_tsp{problem_size}_n{test_episodes}_lkh.txt'
         tester_params['test_episodes'] = test_episodes
         tester_params['iter_budget'] = 1000
         tester_params['test_batch_size'] = test_batch_size

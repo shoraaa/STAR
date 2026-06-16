@@ -58,9 +58,9 @@ knn_k = [20, 1000]
 USE_LIB_MODE = True
 LIB_PATH = os.environ.get(
     'NRS_SURVEY_TSP_DIR',
-    '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_tsp',
+    '../../../../../../../0_data_survey/survey_bench_tsp',
 )
-# LIB_PATH = '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_tsp_negative_fixing'
+# LIB_PATH = '../../../../../../../0_data_survey/survey_bench_tsp_negative_fixing'
 
 problem_size = 'tsplib'
 BUDGET = int(os.environ.get("NRS_DRHG_BUDGET", "1" if os.environ.get("NRS_SMOKE") else "1000"))

@@ -99,7 +99,7 @@ def analyze_log(file_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Analyze TSP Log Filtered")
     parser.add_argument('--file', type=str, 
-                        default='/home/shora/Research/NRS_Survey/NRS/Construction/single-stage/appending/2_LEHD/TSP/result_survey/20251023_022851_test_tsp_survey_RRC_budget0/log.txt',
+                        default='../../../../../NRS/Construction/single-stage/appending/2_LEHD/TSP/result_survey/20251023_022851_test_tsp_survey_RRC_budget0/log.txt',
                         help='Path to the log file')
     args = parser.parse_args()
     

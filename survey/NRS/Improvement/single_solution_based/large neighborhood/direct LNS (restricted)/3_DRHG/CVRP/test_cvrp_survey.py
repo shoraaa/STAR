@@ -142,7 +142,7 @@ def main():
 
     vrplib_root = os.environ.get(
         'NRS_SURVEY_CVRP_DIR',
-        '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_cvrp',
+        '../../../../../../../0_data_survey/survey_bench_cvrp',
     )
     tester.run_lib(root_dir=vrplib_root, detailed_log=True)
 

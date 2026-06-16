@@ -31,7 +31,7 @@ model_load_path = 'result/20230509_153705_train'
 model_load_epoch = 150
 
 # ! === 新增：TSPLIB 遍历与分桶控制（和 ICAM 一致，可自定义） ===
-tsplib_dir = '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_tsp'
+tsplib_dir = '../../../../../../../../../../0_data_survey/survey_bench_tsp'
 # 例：与 ICAM 一致的三档（默认）
 scale_ranges = [[0, 1000], [1000, 10000], [10000, 100001]]
 # scale_ranges = [[0, 1000]]

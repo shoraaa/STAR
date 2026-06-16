@@ -232,7 +232,7 @@ class VRPTester():
 
         survey_cvrp_dir = os.environ.get(
             "NRS_SURVEY_CVRP_DIR",
-            "/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_cvrp",
+            "../../../../../../../0_data_survey/survey_bench_cvrp",
         )
         for i in range(len(self.inst_names)):
             # filename = bb + f'/ba_survey/cvrplib/{self.inst_names[i]}.vrp'

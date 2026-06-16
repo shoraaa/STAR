@@ -137,7 +137,7 @@ class TSPEnv:
 
             # test  TSPLIBReader
             # filename = bb + f'/dataset2/tsplib/{inst_names}.tsp'
-            filename = f'/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_tsp/{inst_names}.tsp'
+            filename = f'../../../../../../../../../../../0_data_survey/survey_bench_tsp/{inst_names}.tsp'
 
             # print(filename)
             # filename = "xxx"

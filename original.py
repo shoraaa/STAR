@@ -77,6 +77,95 @@ JOBS: tuple[OriginalJob, ...] = (
         SURVEY / "Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/3_DRHG/CVRP/test_cvrp_survey.py",
         dev_bounds=(1000, 10000),
     ),
+    OriginalJob(
+        "dgl",
+        "tsp",
+        SURVEY / "Construction/single-stage/appending/8_DGL/TSP/test_survey.py",
+    ),
+    OriginalJob(
+        "l2c_insert",
+        "tsp",
+        SURVEY / "Construction/single-stage/insertion/L2C_Insert/L2C_Insert/TSP/Test/test_survey.py",
+    ),
+    OriginalJob(
+        "gfacs",
+        "tsp",
+        SURVEY / "Improvement/population_based/GFACS/tsp_nls/test_survey.py",
+    ),
+    OriginalJob(
+        "gensco",
+        "tsp",
+        SURVEY / "Improvement/single_solution_based/large neighborhood/direct LNS (non-restricted)/GenSCO/test_survey.py",
+    ),
+    OriginalJob(
+        "fast_t2t",
+        "tsp",
+        SURVEY / "Improvement/single_solution_based/large neighborhood/indirect LNS/Fast-T2T_new/test_survey.py",
+    ),
+    OriginalJob(
+        "l2c_insert_imp",
+        "tsp",
+        SURVEY / "Improvement/single_solution_based/large neighborhood/direct LNS (non-restricted)/L2C_Insert/L2C_Insert/TSP/Test/test_survey.py",
+    ),
+    OriginalJob(
+        "icam",
+        "tsp",
+        SURVEY / "Construction/single-stage/appending/4_ICAM/ICAM_TSP/tsp_test_lib.py",
+    ),
+    OriginalJob(
+        "icam",
+        "cvrp",
+        SURVEY / "Construction/single-stage/appending/4_ICAM/ICAM_CVRP/cvrp_test_lib.py",
+    ),
+    OriginalJob(
+        "elg",
+        "tsp",
+        SURVEY / "Construction/single-stage/appending/5_ELG/TSP/test_tsplib_survey.py",
+    ),
+    OriginalJob(
+        "elg",
+        "cvrp",
+        SURVEY / "Construction/single-stage/appending/5_ELG/CVRP/test_vrplib_survey.py",
+    ),
+    OriginalJob(
+        "invit",
+        "tsp",
+        SURVEY / "Construction/single-stage/appending/6_INViT/train_survey_3v.py",
+        ("--problem", "tsp", "--nb_epochs", "0", "--checkpoint_model", "24-04-11--16-19-47-n100-gpu0"),
+    ),
+    OriginalJob(
+        "invit",
+        "cvrp",
+        SURVEY / "Construction/single-stage/appending/6_INViT/train_survey_3v.py",
+        ("--problem", "cvrp", "--nb_epochs", "0", "--checkpoint_model", "24-04-11--16-55-30-n100-gpu0"),
+    ),
+    OriginalJob(
+        "l2r",
+        "tsp",
+        SURVEY / "Construction/single-stage/appending/7_L2R/TSP/tsp_test_lib.py",
+    ),
+    OriginalJob(
+        "l2r",
+        "cvrp",
+        SURVEY / "Construction/single-stage/appending/7_L2R/CVRP/cvrp_test_main_lib_survey.py",
+    ),
+    OriginalJob(
+        "reld",
+        "cvrp",
+        SURVEY / "Construction/single-stage/appending/9_ReLD/CVRP/test_cvrplib_survey.py",
+    ),
+    OriginalJob(
+        "neuopt",
+        "tsp",
+        SURVEY / "Improvement/single_solution_based/small neighborhood/sequential/NeuOpt/neuopt_survey_lib.py",
+        ("--problem", "tsp"),
+    ),
+    OriginalJob(
+        "neuopt",
+        "cvrp",
+        SURVEY / "Improvement/single_solution_based/small neighborhood/sequential/NeuOpt/neuopt_survey_lib.py",
+        ("--problem", "cvrp"),
+    ),
 )
 
 
@@ -122,6 +211,22 @@ INSTANCE_PATTERNS: tuple[re.Pattern[str], ...] = (
         r"\[(?P<name>[^\]]+)\]\s*score=(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*"
         r"opt=(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*gap=(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*"
         r"time=(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"Instance:\s*(?P<name>[^:]+):\s*Size:\s*(?P<size>\d+),\s*Score:\s*(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*Gap:\s*(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*Time:\s*(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"Instance:\s*(?P<name>[^,]+),\s*dim:\s*(?P<size>\d+),\s*teacher:\s*(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*student:\s*(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*gap:\s*(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*time:\s*(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"Instance\s+(?P<name>[^,]+),\s*dim=(?P<size>\d+),\s*length=(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*optimal=(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*gap=(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*time=(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"Instance:\s*(?P<name>[^,]+),\s*dim:\s*(?P<size>\d+),\s*optimal cost:\s*(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*Pred cost:\s*(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*Gap:\s*(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*Time:\s*(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?",
         re.IGNORECASE,
     ),
 )
@@ -536,8 +641,8 @@ def write_csv(path: Path, rows: list[dict[str, str]], fieldnames: list[str]) -> 
 def job_env(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> dict[str, str]:
     env = os.environ.copy()
     env["NRS_METHOD_LOG_ROOT"] = str(out_dir / "method_logs" / job.job_id)
-    env["NRS_SURVEY_TSP_DIR"] = str(SURVEY_TSP_DIR)
-    env["NRS_SURVEY_CVRP_DIR"] = str(SURVEY_CVRP_DIR)
+    env["NRS_SURVEY_TSP_DIR"] = str(os.path.relpath(SURVEY_TSP_DIR, job.script.parent))
+    env["NRS_SURVEY_CVRP_DIR"] = str(os.path.relpath(SURVEY_CVRP_DIR, job.script.parent))
     if not args.no_skip_src_copy:
         env["NRS_SKIP_SRC_COPY"] = "1"
 

@@ -100,7 +100,7 @@ def main_test(path, prob_size, PRC, repair_max_sub_length, budget, random_insert
 
     tester_params['test_episodes'] = datas[prob_size][0]
     tester_params['test_batch_size'] = datas[prob_size][1]
-    env_params['data_path'] = f'/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_synthetic_tsp/test_tsp{prob_size}_n{tester_params["test_episodes"]}_lkh.txt'
+    env_params['data_path'] = f'../../../../../../../../0_data_survey/survey_synthetic_tsp/test_tsp{prob_size}_n{tester_params["test_episodes"]}_lkh.txt'
 
     env_params['PRC'] = PRC
     env_params['repair_max_sub_length'] = repair_max_sub_length

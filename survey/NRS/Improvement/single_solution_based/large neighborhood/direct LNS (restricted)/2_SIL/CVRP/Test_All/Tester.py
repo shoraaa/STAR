@@ -240,7 +240,7 @@ class VRPTester():
 
         for i in range(len(self.inst_names)):
             # filename = bb + f'/ba_survey/cvrplib/{self.inst_names[i]}.vrp'
-            filename = f'{self.env_params.get("vrplib_path", "/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_cvrp")}/{self.inst_names[i]}.vrp'
+            filename = f'{self.env_params.get("vrplib_path", "../../../../../../../../0_data_survey/survey_bench_cvrp")}/{self.inst_names[i]}.vrp'
             if not os.path.exists(filename):
                 continue
             name, dimension, locs, demand, capacity, cost = self.env.CVRPLIBReader(filename)

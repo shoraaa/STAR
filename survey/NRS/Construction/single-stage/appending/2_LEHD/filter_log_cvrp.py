@@ -101,7 +101,7 @@ def analyze_log(file_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Analyze CVRP Log Filtered")
     parser.add_argument('--file', type=str, 
-                        default='/home/shora/Research/NRS_Survey/NRS/Construction/single-stage/appending/2_LEHD/CVRP/result_survey/20251029_191348_test__vrp0/log.txt',
+                        default='../../../../../NRS/Construction/single-stage/appending/2_LEHD/CVRP/result_survey/20251029_191348_test__vrp0/log.txt',
                         help='Path to the log file')
     args = parser.parse_args()
     

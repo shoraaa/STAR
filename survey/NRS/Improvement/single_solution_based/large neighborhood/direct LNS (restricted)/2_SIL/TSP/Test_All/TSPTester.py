@@ -384,7 +384,7 @@ class TSPTester():
         validate_opt_values = []
 
         for key, opt_val in tsplib_cost.items():
-            filename = f'{self.env_params.get("tsplib_path", "/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_tsp")}/{key}.tsp'
+            filename = f'{self.env_params.get("tsplib_path", "../../../../../../../../0_data_survey/survey_bench_tsp")}/{key}.tsp'
             if not os.path.exists(filename):
                 continue
             name, dimension, locs = self.env.TSPLIBReader(filename)

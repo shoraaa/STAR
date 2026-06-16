@@ -359,7 +359,7 @@ class TSPTester():
         # self.inst_opt_values = self.inst_opt_values[sort_indices]
 
         # # bb = os.path.abspath("../..").replace('\\', '/')
-        # bb = '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_tsp'
+        # bb = '../../../../../../0_data_survey/survey_bench_tsp'
         # # test  TSPLIBReader
 
         # validate_name = []
