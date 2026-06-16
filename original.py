@@ -643,6 +643,10 @@ def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[
         note = f"exit code {proc.returncode}"
         if "out of memory" in proc.stderr.lower() or "oom" in proc.stderr.lower() or "out of memory" in proc.stdout.lower() or "oom" in proc.stdout.lower():
             note = "OOM"
+            
+        print(f"[original] ERROR: {job.job_id} failed with exit code {proc.returncode}", file=sys.stderr)
+        if proc.stderr.strip():
+            print(f"[original] STDERR:\n{proc.stderr.strip()}", file=sys.stderr)
         
         rows.append(
             {
