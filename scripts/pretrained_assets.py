@@ -144,7 +144,7 @@ def pack_assets(manifest_path: Path, archive_path: Path) -> None:
 
 def unpack_assets(archive_path: Path) -> None:
     archive_path = archive_path if archive_path.is_absolute() else ROOT / archive_path
-    with tarfile.open(archive_path, "r:gz") as archive:
+    with tarfile.open(archive_path, "r:*") as archive:
         archive.extractall(ROOT)
     print(f"Unpacked {repo_relative(archive_path)}.")
 
