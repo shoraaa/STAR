@@ -131,7 +131,7 @@ pyasn1==0.6.1
 pyasn1_modules==0.4.2
 pybind11==3.0.1
 pycparser==2.22
-pyg-lib
+# pyg-lib
 Pygments
 PyNaCl==1.5.0
 pyparsing==3.1.4
