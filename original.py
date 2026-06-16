@@ -18,6 +18,9 @@ from typing import Iterable
 
 ROOT = Path(__file__).resolve().parent
 SURVEY = ROOT / "survey" / "NRS"
+SURVEY_DATA = ROOT / "survey" / "0_data_survey"
+SURVEY_TSP_DIR = SURVEY_DATA / "survey_bench_tsp"
+SURVEY_CVRP_DIR = SURVEY_DATA / "survey_bench_cvrp"
 
 
 @dataclass(frozen=True)
@@ -26,6 +29,7 @@ class OriginalJob:
     problem: str
     script: Path
     script_args: tuple[str, ...] = ()
+    dev_bounds: tuple[int, int] | None = None
 
     @property
     def job_id(self) -> str:
@@ -37,8 +41,8 @@ JOBS: tuple[OriginalJob, ...] = (
     OriginalJob("bq", "cvrp", SURVEY / "Construction/single-stage/appending/1_BQ/test_cvrp_survey.py", ("--seed", "0")),
     OriginalJob("lehd", "tsp", SURVEY / "Construction/single-stage/appending/2_LEHD/TSP/test_survey.py"),
     OriginalJob("lehd", "cvrp", SURVEY / "Construction/single-stage/appending/2_LEHD/CVRP/test_cvrp_survey.py"),
-    OriginalJob("sil", "tsp", SURVEY / "Construction/single-stage/appending/3_SIL/TSP/Test_All/test_survey.py"),
-    OriginalJob("sil", "cvrp", SURVEY / "Construction/single-stage/appending/3_SIL/CVRP/Test_All/test_survey.py"),
+    OriginalJob("sil", "tsp", SURVEY / "Construction/single-stage/appending/3_SIL/TSP/Test_All/test_survey.py", dev_bounds=(1000, 10000)),
+    OriginalJob("sil", "cvrp", SURVEY / "Construction/single-stage/appending/3_SIL/CVRP/Test_All/test_survey.py", dev_bounds=(1000, 10000)),
     OriginalJob(
         "lehd_rrc",
         "tsp",
@@ -53,21 +57,25 @@ JOBS: tuple[OriginalJob, ...] = (
         "sil_prc",
         "tsp",
         SURVEY / "Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/2_SIL/TSP/Test_All/test_survey.py",
+        dev_bounds=(1000, 10000),
     ),
     OriginalJob(
         "sil_prc",
         "cvrp",
         SURVEY / "Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/2_SIL/CVRP/Test_All/test_survey.py",
+        dev_bounds=(1000, 10000),
     ),
     OriginalJob(
         "drhg",
         "tsp",
         SURVEY / "Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/3_DRHG/TSP/test_survey.py",
+        dev_bounds=(1000, 10000),
     ),
     OriginalJob(
         "drhg",
         "cvrp",
         SURVEY / "Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/3_DRHG/CVRP/test_cvrp_survey.py",
+        dev_bounds=(1000, 10000),
     ),
 )
 
@@ -75,29 +83,46 @@ JOBS: tuple[OriginalJob, ...] = (
 INSTANCE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
         r"Instance:\s*(?P<name>[^,\n]+),\s*Dimension:\s*(?P<size>\d+),\s*"
-        r"Cost:\s*(?P<cost>[-+0-9.eE]+),\s*Optimal:\s*(?P<opt>[-+0-9.eE]+),\s*"
-        r"Gap:\s*(?P<gap>[-+0-9.eE]+)%,\s*Time:\s*(?P<time>[-+0-9.eE]+)s"
+        r"Cost:\s*(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*Optimal:\s*(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*"
+        r"Gap:\s*(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*Time:\s*(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?"
     ),
     re.compile(
         r"Instance:\s*(?P<name>[^,\n]+),\s*size:\s*(?P<size>\d+),\s*"
-        r"opt:\s*(?P<opt>[-+0-9.eE]+),\s*student:\s*(?P<cost>[-+0-9.eE]+),\s*"
-        r"gap:\s*(?P<gap>[-+0-9.eE]+)%,\s*time:\s*(?P<time>[-+0-9.eE]+)s",
+        r"opt:\s*(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*student:\s*(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*"
+        r"gap:\s*(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*time:\s*(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?",
         re.IGNORECASE,
     ),
     re.compile(
-        r"Dim:\s*(?P<size>\d+),\s*Teacher:\s*(?P<opt>[-+0-9.eE]+),\s*"
-        r"Student:\s*(?P<cost>[-+0-9.eE]+),\s*Gap:\s*(?P<gap>[-+0-9.eE]+)%,\s*"
-        r"Time:\s*(?P<time>[-+0-9.eE]+)s"
+        r"Dim:\s*(?P<size>\d+),\s*Teacher:\s*(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*"
+        r"Student:\s*(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*Gap:\s*(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*"
+        r"Time:\s*(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?"
     ),
     re.compile(
         r"\[Inst\]\s*(?P<name>[^\s]+)\s*\(n=(?P<size>\d+)\)\s*"
-        r"opt=(?P<opt>[-+0-9.eE]+),\s*stu=(?P<cost>[-+0-9.eE]+),\s*"
-        r"gap=(?P<gap>[-+0-9.eE]+)%,\s*time=(?P<time>[-+0-9.eE]+)s"
+        r"opt=(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*stu=(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*"
+        r"gap=(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*time=(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?"
     ),
     re.compile(
-        r"Instance:\s*(?P<name>[^,\n]+),\s*Cost:\s*(?P<cost>[-+0-9.eE]+),\s*"
-        r"Optimal:\s*(?P<opt>[-+0-9.eE]+),\s*Gap:\s*(?P<gap>[-+0-9.eE]+)%,\s*"
-        r"Time:\s*(?P<time>[-+0-9.eE]+)s"
+        r"Instance:\s*(?P<name>[^,\n]+),\s*Cost:\s*(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*"
+        r"Optimal:\s*(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*Gap:\s*(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*"
+        r"Time:\s*(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?"
+    ),
+    re.compile(
+        r"\[OK\]\s*inst:\s*(?P<name>[^,\n]+),\s*n:\s*(?P<size>\d+),\s*"
+        r"gap:\s*(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*time:\s*(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"Instance\s+(?P<name>[^\s|]+)\s+\(n=(?P<size>\d+)\)\s*\|\s*"
+        r"optimal=(?P<opt>[-+0-9.eE]+|OOM|NaN|inf)\s*\|\s*score=(?P<cost>[-+0-9.eE]+|OOM|NaN|inf)\s*\|\s*"
+        r"gap=(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?\s*\|\s*time=(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\[(?P<name>[^\]]+)\]\s*score=(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*"
+        r"opt=(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*gap=(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*"
+        r"time=(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?",
+        re.IGNORECASE,
     ),
 )
 
@@ -161,6 +186,12 @@ def size_bounds(size: str) -> tuple[int, int] | None:
     raise ValueError(size)
 
 
+def job_size_bounds(args: argparse.Namespace, job: OriginalJob) -> tuple[int, int] | None:
+    if args.size == "dev" and job.dev_bounds is not None:
+        return job.dev_bounds
+    return size_bounds(args.size)
+
+
 def select_jobs(methods: list[str], problems: list[str]) -> list[OriginalJob]:
     if methods == ["all"]:
         selected = [job for job in JOBS if job.problem in problems]
@@ -221,6 +252,124 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def read_tsplib_instance(path: Path) -> tuple[str, float | None, list[tuple[float, float]]]:
+    name = path.stem
+    coords: list[tuple[float, float]] = []
+    in_coords = False
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("NAME"):
+            name = line.split()[-1]
+        elif line.startswith("NODE_COORD_SECTION"):
+            in_coords = True
+        elif line.startswith("EOF"):
+            break
+        elif in_coords:
+            parts = line.split()
+            if len(parts) >= 3:
+                coords.append((float(parts[1]), float(parts[2])))
+
+    opt = None
+    opt_path = SURVEY_DATA / "survey_bench_opt_tsp_same_file_name.py"
+    if opt_path.exists():
+        text = opt_path.read_text(encoding="utf-8", errors="replace")
+        match = re.search(rf"['\"]{re.escape(name)}['\"]\s*:\s*([-+0-9.eE]+)", text)
+        if match:
+            opt = float(match.group(1))
+    return name, opt, coords
+
+
+def read_cvrplib_instance(path: Path) -> tuple[str, float | None, list[tuple[float, float]], list[int], int]:
+    name = path.stem
+    coords: list[tuple[float, float]] = []
+    demands: list[int] = []
+    capacity = 0
+    section = ""
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("NAME"):
+            name = line.split()[-1]
+        elif line.startswith("CAPACITY"):
+            capacity = int(float(line.split()[-1]))
+        elif line.startswith("NODE_COORD_SECTION"):
+            section = "coords"
+        elif line.startswith("DEMAND_SECTION"):
+            section = "demands"
+        elif line.startswith("DEPOT_SECTION"):
+            section = ""
+        elif section == "coords":
+            parts = line.split()
+            if len(parts) >= 3:
+                coords.append((float(parts[1]), float(parts[2])))
+        elif section == "demands":
+            parts = line.split()
+            if len(parts) >= 2:
+                demands.append(int(float(parts[-1])))
+
+    opt = None
+    sol_path = path.with_suffix(".sol")
+    if sol_path.exists():
+        for raw_line in sol_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if raw_line.startswith("Cost"):
+                opt = float(raw_line.split()[-1])
+                break
+    return name, opt, coords, demands, capacity
+
+
+def write_sil_tsp_smoke_fixture(target: Path) -> None:
+    if target.exists():
+        return
+    candidates = sorted(SURVEY_TSP_DIR.glob("*.tsp"))
+    source = next((path for path in candidates if "C1k" in path.name), candidates[0] if candidates else None)
+    if source is None:
+        return
+    name, opt, coords = read_tsplib_instance(source)
+    if not coords:
+        return
+    fields = [name, str(opt or 0.0)]
+    for x, y in coords:
+        fields.extend((f"{x:g}", f"{y:g}"))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(",".join(fields) + "\n", encoding="utf-8")
+
+
+def write_sil_cvrp_smoke_fixture(target: Path) -> None:
+    if target.exists():
+        return
+    candidates = sorted(SURVEY_CVRP_DIR.glob("X-n1001-*.vrp"))
+    source = candidates[0] if candidates else next(iter(sorted(SURVEY_CVRP_DIR.glob("*.vrp"))), None)
+    if source is None:
+        return
+    name, opt, coords, demands, capacity = read_cvrplib_instance(source)
+    if len(coords) < 2 or len(demands) != len(coords):
+        return
+    depot = coords[0]
+    customers = coords[1:]
+    fields = ["['name'", name, "'depot'", f"{depot[0]:g}", f"{depot[1]:g}", "'customer'"]
+    for x, y in customers:
+        fields.extend((f"{x:g}", f"{y:g}"))
+    fields.append("'demand'")
+    fields.extend(str(demand) for demand in demands)
+    fields.extend(("'capacity'", str(capacity), "'cost'", str(opt or 0.0), "']"))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(", ".join(fields) + "\n", encoding="utf-8")
+
+
+def ensure_sil_smoke_data(args: argparse.Namespace, job: OriginalJob) -> None:
+    if args.size != "dev" or job.method not in {"sil", "sil_prc"}:
+        return
+    if job.problem == "tsp":
+        data_path = job.script.parent.parent / "data/test_set/TSPlib_scale_ge_1K_n33_ascending.txt"
+        write_sil_tsp_smoke_fixture(data_path)
+    elif job.problem == "cvrp":
+        data_path = job.script.parent.parent / "data/test_set/CVRPlib_scale_larger_than1000_Li_X_XXL_n14.txt"
+        write_sil_cvrp_smoke_fixture(data_path)
+
+
 def parse_instance_rows(text: str, job: OriginalJob, log_path: Path) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     seen: set[tuple[str, str, str, str]] = set()
@@ -236,9 +385,44 @@ def parse_instance_rows(text: str, job: OriginalJob, log_path: Path) -> list[dic
             if key in seen:
                 break
             seen.add(key)
+            
+            status = "ok"
+            note = ""
+            gap_str = data.get("gap", "")
+            time_str = data.get("time", "")
+            
+            if gap_str:
+                if "OOM" in gap_str.upper() or "NAN" in gap_str.upper() or "INF" in gap_str.upper():
+                    status = "FAILED"
+                    note = gap_str.strip()
+                else:
+                    try:
+                        if float(gap_str) > 100.0:
+                            status = "FAILED"
+                            note = "gap > 100%"
+                    except ValueError:
+                        pass
+            
+            if status == "ok" and time_str:
+                if "OOM" in time_str.upper() or "NAN" in time_str.upper() or "INF" in time_str.upper():
+                    status = "FAILED"
+                    note = time_str.strip()
+                else:
+                    try:
+                        if float(time_str) > 360.0:
+                            status = "FAILED"
+                            note = "time > 360s"
+                    except ValueError:
+                        pass
+
+            # Detect OOM in the whole line as well, just in case
+            if status == "ok" and "OOM" in line.upper():
+                status = "FAILED"
+                note = "OOM"
+                
             rows.append(
                 {
-                    "status": "ok",
+                    "status": status,
                     "method": job.method,
                     "problem": job.problem,
                     "job_id": job.job_id,
@@ -247,10 +431,10 @@ def parse_instance_rows(text: str, job: OriginalJob, log_path: Path) -> list[dic
                     "size_group": bucket_for_size(size),
                     "cost": data.get("cost", ""),
                     "bks": data.get("opt", ""),
-                    "gap_percent": data.get("gap", ""),
-                    "time_seconds": data.get("time", ""),
+                    "gap_percent": gap_str,
+                    "time_seconds": time_str,
                     "source_log": str(log_path),
-                    "note": "",
+                    "note": note,
                 }
             )
             break
@@ -352,10 +536,12 @@ def write_csv(path: Path, rows: list[dict[str, str]], fieldnames: list[str]) -> 
 def job_env(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> dict[str, str]:
     env = os.environ.copy()
     env["NRS_METHOD_LOG_ROOT"] = str(out_dir / "method_logs" / job.job_id)
+    env["NRS_SURVEY_TSP_DIR"] = str(SURVEY_TSP_DIR)
+    env["NRS_SURVEY_CVRP_DIR"] = str(SURVEY_CVRP_DIR)
     if not args.no_skip_src_copy:
         env["NRS_SKIP_SRC_COPY"] = "1"
 
-    bounds = size_bounds(args.size)
+    bounds = job_size_bounds(args, job)
     if args.size == "dev":
         env["NRS_SMOKE"] = "1"
         env["NRS_SMOKE_EPISODES"] = str(args.smoke_episodes)
@@ -367,6 +553,33 @@ def job_env(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> dict[s
         env["NRS_SURVEY_SIZE_HIGH"] = str(high)
         env["NRS_EVAL_SIZE_BUCKET"] = args.size
     return env
+
+
+def ensure_sil_prc_checkpoints(job: OriginalJob) -> None:
+    if job.method != "sil_prc":
+        return
+    if job.problem == "tsp":
+        source_dir = SURVEY / "Construction/single-stage/appending/3_SIL/TSP/Test_All/result"
+        target_dir = SURVEY / "Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/2_SIL/TSP/Test_All/result"
+        prefix = "checkpoint-tsp"
+    elif job.problem == "cvrp":
+        source_dir = SURVEY / "Construction/single-stage/appending/3_SIL/CVRP/Test_All/result"
+        target_dir = SURVEY / "Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/2_SIL/CVRP/Test_All/result"
+        prefix = "checkpoint-cvrp"
+    else:
+        return
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    # We use 1k model for each method as requested
+    for suffix in ("1k", "5k", "10k", "50k", "100k"):
+        source = source_dir / f"{prefix}1k.pt"
+        target = target_dir / f"{prefix}{suffix}.pt"
+        if target.exists() and not target.is_symlink():
+            target.unlink()
+        if target.is_symlink():
+            target.unlink()
+        if source.exists():
+            target.symlink_to(os.path.relpath(source, start=target_dir))
 
 
 def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
@@ -388,6 +601,8 @@ def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[
         }
         return [failure], []
 
+    ensure_sil_smoke_data(args, job)
+    ensure_sil_prc_checkpoints(job)
     raw_dir = out_dir / "raw" / job.job_id
     raw_dir.mkdir(parents=True, exist_ok=True)
     stdout_path = raw_dir / "stdout.txt"
@@ -425,9 +640,13 @@ def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[
     rows = dedupe_rows(rows)
     summary_rows.extend(summarize(rows, job))
     if proc.returncode != 0:
+        note = f"exit code {proc.returncode}"
+        if "out of memory" in proc.stderr.lower() or "oom" in proc.stderr.lower() or "out of memory" in proc.stdout.lower() or "oom" in proc.stdout.lower():
+            note = "OOM"
+        
         rows.append(
             {
-                "status": "failed",
+                "status": "FAILED" if note == "OOM" else "failed",
                 "method": job.method,
                 "problem": job.problem,
                 "job_id": job.job_id,
@@ -439,7 +658,7 @@ def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[
                 "gap_percent": "",
                 "time_seconds": f"{elapsed:.6f}",
                 "source_log": str(stderr_path),
-                "note": f"exit code {proc.returncode}",
+                "note": note,
             }
         )
     elif not rows:

@@ -164,7 +164,11 @@ class VRPEnv:
             # test  TSPLIBReader
 
             # filename = bb + f'/ba_survey/cvrplib/{inst_names}.vrp'
-            filename = f'/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_cvrp/{inst_names}.vrp'
+            survey_cvrp_dir = os.environ.get(
+                'NRS_SURVEY_CVRP_DIR',
+                '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_cvrp',
+            )
+            filename = os.path.join(survey_cvrp_dir, f'{inst_names}.vrp')
 
             name, dimension, locs, demand, capacity, cost = self.CVRPLIBReader(filename)
 

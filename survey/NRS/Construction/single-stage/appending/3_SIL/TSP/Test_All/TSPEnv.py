@@ -137,7 +137,11 @@ class TSPEnv:
 
             # test  TSPLIBReader
             # filename = bb + f'/dataset2/tsplib/{inst_names}.tsp'
-            filename = f'/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_tsp/{inst_names}.tsp'
+            survey_tsp_dir = os.environ.get(
+                'NRS_SURVEY_TSP_DIR',
+                '/home/shora/Research/NRS_Survey/NRS/0_data_survey/survey_bench_tsp',
+            )
+            filename = os.path.join(survey_tsp_dir, f'{inst_names}.tsp')
 
             # print(filename)
             # filename = "xxx"
