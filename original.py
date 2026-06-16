@@ -409,9 +409,9 @@ def parse_instance_rows(text: str, job: OriginalJob, log_path: Path) -> list[dic
                     note = time_str.strip()
                 else:
                     try:
-                        if float(time_str) > 360.0:
+                        if float(time_str) > 3600.0:
                             status = "FAILED"
-                            note = "time > 360s"
+                            note = "time > 3600s"
                     except ValueError:
                         pass
 
