@@ -45,6 +45,8 @@ survey/0_data_survey/**
 !survey/0_data_survey/survey_bench_cvrp/**
 !survey/0_data_survey/survey_bench_cvrp/**/
 
+uv.lock
+
 # PyTorch/JAX checkpoints
 *.ckpt
 *.pth
