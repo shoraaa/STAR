@@ -26,6 +26,9 @@ dependencies = [
     "flax",
     "torch_cluster",
     "pytorch_lightning",
+    "jaxlib",
+    "numba",
+    "scikit-learn"
 ]
 
 [build-system]
