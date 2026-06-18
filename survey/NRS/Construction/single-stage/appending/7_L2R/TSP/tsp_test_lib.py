@@ -44,8 +44,10 @@ tsplib_path = '../../../../../../0_data_survey/survey_bench_tsp'
 test_episodes = 1
 test_batch_size = 1
 
-model_path_absolute = '../../../../../../NRS/Construction/single-stage/appending/7_L2R/000_Test_L2R_Adam_LN_TSP/result_tsp_models_L2R'
-model_path = f"{model_path_absolute}/20250418_103804_rollout_tsp100_C10_Longtrain100"
+model_path_absolute = '~/ubuntu/STAR/NRS/Construction/single-stage/appending/7_L2R/pretrained'
+model_path = f"{model_path_absolute}/TSP"
+# model_path_absolute = '../../../../../../NRS/Construction/single-stage/appending/7_L2R/000_Test_L2R_Adam_LN_TSP/result_tsp_models_L2R'
+# model_path = f"{model_path_absolute}/20250418_103804_rollout_tsp100_C10_Longtrain100"
 
 env_params = {
     'problem_size': None,
