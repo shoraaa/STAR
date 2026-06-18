@@ -271,6 +271,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--python", default=sys.executable, help="Python executable used to run original scripts.")
     parser.add_argument("--timeout", type=float, default=None, help="Optional per-job timeout in seconds.")
     parser.add_argument("--continue-on-error", action="store_true", help="Keep running remaining jobs after failure.")
+    parser.add_argument("--fail-fast", action="store_true", help="Stop after the first failed job, including --methods all.")
     parser.add_argument("--list", action="store_true", help="List available original jobs and exit.")
     parser.add_argument("--no-skip-src-copy", action="store_true", help="Allow original scripts to copy source snapshots.")
     parser.add_argument("--smoke-episodes", type=int, default=1, help="Episode cap for --size dev where supported.")
@@ -310,6 +311,10 @@ def select_jobs(methods: list[str], problems: list[str]) -> list[OriginalJob]:
     if not selected:
         raise SystemExit("no original jobs selected")
     return selected
+
+
+def missing_jobs(jobs: Iterable[OriginalJob]) -> list[OriginalJob]:
+    return [job for job in jobs if not job.script.exists()]
 
 
 def bucket_for_size(size: int | None) -> str:
@@ -802,6 +807,23 @@ def main() -> int:
     out_dir = Path(args.out_dir) if args.out_dir else ROOT / "results" / f"original-{timestamp}"
     out_dir = out_dir.resolve()
     jobs = select_jobs(args.methods, args.problems)
+    continue_after_error = (args.methods == ["all"] and not args.fail_fast) or args.continue_on_error
+    missing = missing_jobs(jobs)
+    if missing:
+        print(
+            "[original] warning: some selected jobs are not present in this checkout. "
+            "The pretrained-assets archive restores checkpoints/data files, not method "
+            "source trees; commit the now-unignored method source directories for fresh clones.",
+            file=sys.stderr,
+        )
+        for job in missing:
+            print(f"[original] missing {job.job_id}: {job.script.relative_to(ROOT)}", file=sys.stderr)
+        if not continue_after_error:
+            print(
+                "[original] stopping at the first missing/failed job by default; "
+                "use --continue-on-error to run the available jobs.",
+                file=sys.stderr,
+            )
 
     all_rows: list[dict[str, str]] = []
     all_summary_rows: list[dict[str, str]] = []
@@ -830,7 +852,8 @@ def main() -> int:
             summary_rows = []
         all_rows.extend(rows)
         all_summary_rows.extend(summary_rows)
-        if any(row["status"] in {"failed", "timeout", "missing_script"} for row in rows) and not args.continue_on_error:
+        failed_statuses = {"failed", "FAILED", "timeout", "missing_script"}
+        if any(row["status"] in failed_statuses for row in rows) and not continue_after_error:
             break
 
     write_csv(

@@ -30,6 +30,7 @@ Thumbs.db
 results/
 output/
 *.log
+gpucore*
 .omx/
 pretrained-assets.tar.gz
 
@@ -57,38 +58,28 @@ survey/0_data_survey/**
 # Jupyter
 .ipynb_checkpoints/
 
-# All other NRS methods ignored (single-* so whitelists can work)
-survey/NRS/*
-!survey/NRS/native_forward_swap.py
-!survey/NRS/Improvement/
-survey/NRS/Improvement/*
-!survey/NRS/Improvement/single_solution_based/
-survey/NRS/Improvement/single_solution_based/*
-!survey/NRS/Improvement/single_solution_based/large neighborhood/
-survey/NRS/Improvement/single_solution_based/large neighborhood/*
-!survey/NRS/Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/
+# NRS method source should be cloneable. Keep generated artifacts and large
+# assets out of Git; pretrained checkpoints are covered by the asset manifest.
+survey/NRS/0_data_survey
+survey/NRS/**/__pycache__/
+survey/NRS/**/.vscode/
+survey/NRS/**/0_data_survey
+survey/NRS/**/result_survey*/
+survey/NRS/**/result_survey*/**
+survey/NRS/**/result_survey_tsp*/
+survey/NRS/**/result_survey_tsp*/**
+survey/NRS/**/result_survey_cvrp*/
+survey/NRS/**/result_survey_cvrp*/**
+survey/NRS/**/outputs/
+survey/NRS/**/runs/
+survey/NRS/**/*.log
 
-# Whitelist construction-side neural policies used by STAR sil/lehd.
-!survey/NRS/Construction/
-survey/NRS/Construction/*
-!survey/NRS/Construction/single-stage/
-survey/NRS/Construction/single-stage/*
-!survey/NRS/Construction/single-stage/appending/
-survey/NRS/Construction/single-stage/appending/*
-!survey/NRS/Construction/single-stage/appending/2_LEHD/
-!survey/NRS/Construction/single-stage/appending/2_LEHD/**/
-!survey/NRS/Construction/single-stage/appending/2_LEHD/**/*.py
-!survey/NRS/Construction/single-stage/appending/2_LEHD/**/*.md
-!survey/NRS/Construction/single-stage/appending/2_LEHD/**/*.txt
-!survey/NRS/Construction/single-stage/appending/2_LEHD/**/*.json
+# Small checkpoint exceptions already tracked by this repo.
 !survey/NRS/Construction/single-stage/appending/2_LEHD/**/*.pt
-!survey/NRS/Construction/single-stage/appending/3_SIL/
-!survey/NRS/Construction/single-stage/appending/3_SIL/**/
-!survey/NRS/Construction/single-stage/appending/3_SIL/**/*.py
-!survey/NRS/Construction/single-stage/appending/3_SIL/**/*.md
-!survey/NRS/Construction/single-stage/appending/3_SIL/**/*.txt
 !survey/NRS/Construction/single-stage/appending/3_SIL/TSP/Test_All/result/checkpoint-tsp1k.pt
 !survey/NRS/Construction/single-stage/appending/3_SIL/CVRP/Test_All/result/checkpoint-cvrp1k.pt
+!survey/NRS/Improvement/single_solution_based/large neighborhood/direct LNS (restricted)/**/*.pt
+
 survey/NRS/Construction/**/.vscode/
 survey/NRS/Construction/**/0_data_survey
 survey/NRS/Construction/**/result_survey*/

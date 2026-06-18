@@ -55,7 +55,65 @@ pip install -r requirements.txt
 python setup.py build_ext --inplace
 ```
 
+## Pretrained Assets
+
+The pretrained checkpoints are not stored in normal Git because the full asset
+set is large. The repo tracks `pretrained_assets_manifest.csv`, which records
+the expected checkpoint paths, file sizes, and SHA-256 hashes, plus
+`scripts/pretrained_assets.py`, which packs, unpacks, and verifies the archive.
+
+On a machine that already has the pretrained files, create the transfer archive
+from the repository root:
+
+```bash
+uv run python scripts/pretrained_assets.py verify
+uv run python scripts/pretrained_assets.py pack --verify-first
+```
+
+This writes `pretrained-assets.tar.gz` in the repository root. The archive is
+ignored by Git, so move it separately to the machine where you cloned the repo.
+For example:
+
+```bash
+scp pretrained-assets.tar.gz user@new-machine:/path/to/NRS-Survey-STAR/
+```
+
+On the new machine, extract and verify it from the cloned repository root:
+
+```bash
+cd /path/to/NRS-Survey-STAR
+uv run python scripts/pretrained_assets.py unpack --verify-after
+```
+
+If `uv` is not installed there, the helper also works with Python directly:
+
+```bash
+python scripts/pretrained_assets.py unpack --verify-after
+python scripts/pretrained_assets.py verify
+```
+
+For the short standalone reference, see [`PRETRAINED_ASSETS.md`](PRETRAINED_ASSETS.md).
+
 ## Usage
+
+### Running Original NRS Methods
+
+The `original.py` wrapper is intended to run all listed NRS method entrypoints.
+For a fresh clone to do that, the method source directories under `survey/NRS/`
+must be committed to Git, and the large checkpoints/data files must be restored
+with the pretrained-assets archive above.
+
+```bash
+uv run original.py
+```
+
+By default, the all-method run continues after individual method failures and
+records each status in `results/original-*/original_results.csv`. To stop at
+the first failed method:
+
+```bash
+uv run original.py --fail-fast
+```
 
 ### Running STAR Inference
 
