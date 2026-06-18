@@ -21,7 +21,11 @@ dependencies = [
     "pytz>=2026.2",
     "matplotlib>=3.7.5",
     "pyyaml>=6.0.3",
-    "tensorflow"
+    "tensorflow",
+    "torch_geometric",
+    "flax",
+    "torch_cluster",
+    "pytorch_lightning",
 ]
 
 [build-system]

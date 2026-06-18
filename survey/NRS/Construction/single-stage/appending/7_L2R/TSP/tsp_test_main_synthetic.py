@@ -47,7 +47,7 @@ test_batch_size = test_episodes
 data_path = f'../../../../../../0_data_survey/survey_synthetic_tsp/test_tsp{problem_size}_n{test_episodes}_lkh.txt'
 
 solution_filename = None
-model_path_absolute = '../../../../../../NRS/Construction/single-stage/appending/7_L2R/pretrained'
+model_path_absolute = '../pretrained'
 model_path = f"{model_path_absolute}/TSP"
 
 
