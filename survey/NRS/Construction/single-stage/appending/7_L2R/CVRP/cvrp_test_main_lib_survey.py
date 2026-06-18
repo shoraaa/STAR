@@ -45,8 +45,8 @@ cvrplib_path = '../../../../../../0_data_survey/survey_bench_cvrp'
 
 # model_path_absolute = '/public/home/zhoucl/000_NCO_Codes_v20241213/NeurIPS2025_L2R_Revised/CVRP/v0_C50_TwoMask/result_cvrp_models_L2R'
 # model_path = f"{model_path_absolute}/20250422_110455_rollout_Adam_FC50_LD_Upper98_Lower98_NoReLD_ComTrain_weighted1_UpperLowerAlpha_reduction10_k50_cvrp100_bs60_Longtrain100"
-model_path_absolute = '../../../../../../NRS/Construction/single-stage/appending/7_L2R/000_CVRP_Test_L2R_FixedC50_TwoMask/result_cvrp_models_L2R'
-model_path = f"{model_path_absolute}/20250422_110455_rollout_Adam_FC50_LD_Upper98_Lower98_NoReLD_ComTrain_weighted1_UpperLowerAlpha_reduction10_k50_cvrp100_bs60_Longtrain100"
+model_path_absolute = '../../../../../../NRS/Construction/single-stage/appending/7_L2R/pretrained'
+model_path = f"{model_path_absolute}/CVRP"
 
 
 env_params = {
