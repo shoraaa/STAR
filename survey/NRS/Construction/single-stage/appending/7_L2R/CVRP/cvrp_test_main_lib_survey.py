@@ -43,7 +43,7 @@ test_batch_size = 1
 # cvrplib_path = '../../../../../../0_data_survey/cvrp_test'
 cvrplib_path = '../../../../../../0_data_survey/survey_bench_cvrp'
 
-model_path_absolute = '~/ubuntu/STAR/NRS/Construction/single-stage/appending/7_L2R/pretrained'
+model_path_absolute = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "pretrained"))
 model_path = f"{model_path_absolute}/CVRP"
 # model_path_absolute = '../../../../../../NRS/Construction/single-stage/appending/7_L2R/pretrained'
 # model_path = f"{model_path_absolute}/CVRP"
@@ -117,7 +117,8 @@ def main():
                     model_params=model_params,
                     tester_params=tester_params)
 
-    copy_all_src(tester.result_folder)
+    if not os.environ.get("NRS_SKIP_SRC_COPY"):
+        copy_all_src(tester.result_folder)
     if CVRPLIB_MODE:
         tester.run_lib()
     # else:

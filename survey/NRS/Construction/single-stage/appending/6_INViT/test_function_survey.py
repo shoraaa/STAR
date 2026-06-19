@@ -16,7 +16,7 @@ from pathlib import Path
 import warnings
 from load_data import load_instances_with_baselines,use_saved_problems_tsp_txt
 from utils.utils_for_model import run_aug, compute_vrp_tour_length, compute_tsp_tour_length
-from utils.utilities import get_dist_matrix,calculate_tour_length_by_dist_matrix,normalize_nodes_to_unit_board,avg_list,load_tsplib_file,load_cvrplib_file,choose_bsz,check_cvrp_solution_validity,parse_tsplib_name,parse_cvrplib_name
+from utils.utilities import cvrplib_collections,get_dist_matrix,calculate_tour_length_by_dist_matrix,normalize_nodes_to_unit_board,avg_list,load_tsplib_file,load_cvrplib_file,choose_bsz,check_cvrp_solution_validity,parse_tsplib_name,parse_cvrplib_name
 warnings.filterwarnings("ignore", category=UserWarning)
 
 from LIBUtils import *
@@ -233,6 +233,78 @@ def run_tsplib_test_knn(model,action_k,state_k,path=None):
     print("All solved instances, number: {0}, avg gap: {1:.3f}%".
                         format(len(gap_set_all_instances),
                                 np.mean(gap_set_all_instances) if len(gap_set_all_instances) > 0 else 0))
+
+
+def run_cvrplib_test_knn(model,action_k,state_k,path=None):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    root = Path(path) if path is not None else Path("../../../../../0_data_survey/survey_bench_cvrp")
+    problem_type='cvrp'
+    aug = 'mix'
+    st1 = []
+    st2 = []
+    st3 = []
+    st4 = []
+    cvrplib_names = list(cvrplib_collections.keys())
+    cvrplib_names.sort(key=lambda x: parse_cvrplib_name(x)[1])
+    if os.environ.get("NRS_SMOKE"):
+        limit = int(os.environ.get("NRS_SMOKE_EPISODES", "1"))
+        cvrplib_names = cvrplib_names[:limit]
+
+    print("Start CVRPLIB evaluation...")
+    for i in range(len(cvrplib_names)):
+        name = cvrplib_names[i]
+        opt_len = cvrplib_collections[name]
+        _, load_size = parse_cvrplib_name(name)
+
+        depot, nodes, demands, capacity, name = load_cvrplib_file(root, name)
+        demands = demands.to(device)
+        size = nodes.size(0)
+        assert size == load_size
+        depot_nodes = torch.cat((nodes, depot.unsqueeze(dim=0)), dim=0)
+        dist_matrix = get_dist_matrix(depot_nodes).to(device)
+
+        normalized_depot_nodes = normalize_nodes_to_unit_board(depot_nodes)
+        bsz = 1
+        normalized_instance = torch.tensor(normalized_depot_nodes).float().to(device)
+        normalized_instance = normalized_instance.unsqueeze(0)
+        normalized_instance = normalized_instance.repeat((bsz,1,1))
+        X = run_aug(aug,normalized_instance)
+        depot_aug = X[:,-1,:]
+        nodes_aug = X[:,0:-1,:]
+        demand_repeat = demands.unsqueeze(dim=0).repeat((bsz,1))
+        input_aug = {'loc':nodes_aug,'demand':demand_repeat,'depot':depot_aug}
+        with torch.no_grad():
+            tour, _ = model(input_aug, action_k, state_k, capacity, problem_type, choice_deterministic=True)
+        length_by_agent = compute_vrp_tour_length(normalized_instance,tour)
+        idx = length_by_agent.min(dim=0).indices.item()
+        best_tour = tour[idx,:]
+
+        if not check_cvrp_solution_validity(best_tour, demands, size, capacity):
+            print("Instance {0:4d} {1:10}: Failed to be solved!".format(i, name))
+            continue
+
+        tour_len = calculate_tour_length_by_dist_matrix(dist_matrix, best_tour).item()
+        tour_len = math.ceil(tour_len)
+        gap = tour_len / opt_len - 1
+
+        code = [name, size, tour_len, gap]
+        if size <= 100:
+            st1.append(code)
+        elif size <= 200:
+            st2.append(code)
+        elif size <= 500:
+            st3.append(code)
+        else:
+            st4.append(code)
+
+        print("Instance {0:4d} {1:10}: model len {2:.3f} to opt {3:.3f} -> gap {4:.3f}%.".format(
+            i, name, tour_len, opt_len, gap * 100))
+
+    print("\n")
+    print("CVRP 1~100     : {0} instances, gap {1:.3f}%".format(len(st1), avg_list([x[3] for x in st1]) * 100))
+    print("CVRP 101~200   : {0} instances, gap {1:.3f}%".format(len(st2), avg_list([x[3] for x in st2]) * 100))
+    print("CVRP 201~500   : {0} instances, gap {1:.3f}%".format(len(st3), avg_list([x[3] for x in st3]) * 100))
+    print("CVRP 501~1000  : {0} instances, gap {1:.3f}%".format(len(st4), avg_list([x[3] for x in st4]) * 100))
     
 
 def run_tsp_test_knn(local_k,global_k,aug,model,if_use_local_mask,sizes,bszs,data_path,device,

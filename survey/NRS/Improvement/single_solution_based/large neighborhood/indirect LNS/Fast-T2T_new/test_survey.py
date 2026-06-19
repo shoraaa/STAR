@@ -375,14 +375,15 @@ def main(args):
     model = model_class(param_args=args)
     os.makedirs(os.path.join(args.storage_path), exist_ok=True)
 
+    use_cuda = torch.cuda.is_available()
     trainer = Trainer(
-        accelerator="auto",
-        devices=torch.cuda.device_count() if torch.cuda.is_available() else None,
+        accelerator="gpu" if use_cuda else "cpu",
+        devices=torch.cuda.device_count() if use_cuda else 1,
         max_epochs=epochs,
         callbacks=[TQDMProgressBar(refresh_rate=1)],
         logger=False,                      # ← 不使用 pl 的 logger / wandb
         check_val_every_n_epoch=1,
-        strategy=DDPStrategy(static_graph=True),
+        strategy=DDPStrategy(static_graph=True) if torch.cuda.device_count() > 1 else "auto",
         precision=16 if args.fp16 else 32,
         inference_mode=False,
     )

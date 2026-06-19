@@ -231,6 +231,14 @@ INSTANCE_PATTERNS: tuple[re.Pattern[str], ...] = (
     ),
 )
 
+FAST_T2T_INSTANCE_PATTERN = re.compile(
+    r"Instance name:\s*(?P<name>[^,\n]+),\s*problem_size:\s*(?P<size>\d+).*?"
+    r"Instance name:\s*(?P=name),\s*optimal score:\s*(?P<opt>[-+0-9.eE]+).*?"
+    r"No aug score:\s*(?P<cost>[-+0-9.eE]+),\s*No aug gap:\s*(?P<gap>[-+0-9.eE]+)%.*?"
+    r"Instance time \(incl\. dist\+test\):\s*(?P<time>[-+0-9.eE]+)s",
+    re.DOTALL,
+)
+
 SUMMARY_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
         r"\[(?P<bucket>[^\]]+)\]\s*count:\s*(?P<count>\d+),\s*"
@@ -483,6 +491,30 @@ def ensure_sil_smoke_data(args: argparse.Namespace, job: OriginalJob) -> None:
 def parse_instance_rows(text: str, job: OriginalJob, log_path: Path) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     seen: set[tuple[str, str, str, str]] = set()
+    if job.job_id == "fast_t2t_tsp":
+        for match in FAST_T2T_INSTANCE_PATTERN.finditer(text):
+            data = match.groupdict()
+            size = int(data["size"])
+            rows.append(
+                {
+                    "status": "ok",
+                    "method": job.method,
+                    "problem": job.problem,
+                    "job_id": job.job_id,
+                    "instance": data["name"],
+                    "size": data["size"],
+                    "size_group": bucket_for_size(size),
+                    "cost": data["cost"],
+                    "bks": data["opt"],
+                    "gap_percent": data["gap"],
+                    "time_seconds": data["time"],
+                    "source_log": str(log_path),
+                    "note": "",
+                }
+            )
+        if rows:
+            return rows
+
     for line in text.splitlines():
         for pattern in INSTANCE_PATTERNS:
             match = pattern.search(line)
@@ -645,6 +677,8 @@ def write_csv(path: Path, rows: list[dict[str, str]], fieldnames: list[str]) -> 
 
 def job_env(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> dict[str, str]:
     env = os.environ.copy()
+    for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        env.setdefault(name, "20")
     env["NRS_METHOD_LOG_ROOT"] = str(out_dir / "method_logs" / job.job_id)
     env["NRS_SURVEY_TSP_DIR"] = str(os.path.relpath(SURVEY_TSP_DIR, job.script.parent))
     env["NRS_SURVEY_CVRP_DIR"] = str(os.path.relpath(SURVEY_CVRP_DIR, job.script.parent))
@@ -692,6 +726,19 @@ def ensure_sil_prc_checkpoints(job: OriginalJob) -> None:
             target.symlink_to(os.path.relpath(source, start=target_dir))
 
 
+def ensure_fast_t2t_cython(args: argparse.Namespace, job: OriginalJob) -> None:
+    if job.job_id != "fast_t2t_tsp":
+        return
+    ext_dir = job.script.parent / "diffusion/utils/cython_merge"
+    if list(ext_dir.glob("cython_merge*.so")):
+        return
+    subprocess.run(
+        [args.python, "setup.py", "build_ext", "--inplace"],
+        cwd=str(ext_dir),
+        check=True,
+    )
+
+
 def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     if not job.script.exists():
         failure = {
@@ -713,6 +760,7 @@ def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[
 
     ensure_sil_smoke_data(args, job)
     ensure_sil_prc_checkpoints(job)
+    ensure_fast_t2t_cython(args, job)
     raw_dir = out_dir / "raw" / job.job_id
     raw_dir.mkdir(parents=True, exist_ok=True)
     stdout_path = raw_dir / "stdout.txt"

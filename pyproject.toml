@@ -9,28 +9,49 @@ dependencies = [
     "pybind11",
     "cython",
     "vrplib",
-    "torch",
-    "torchvision",
+    "torch==2.8.0+cu128",
+    "torchvision==0.23.0+cu128",
     "tqdm",
     "entmax",
     "scipy",
     "pandas",
-    "jax>=0.4.13",
+    "jax[cuda12]>=0.4.13",
     "torch-cluster",
+    "torch-scatter",
+    "torch-sparse",
+    "torch-spline-conv",
     "tensorboard-logger",
+    "tensorboardX",
     "pytz",
     "matplotlib",
     "pyyaml",
     "tensorflow",
-    "torch_geometric",
+    "torch-geometric",
     "flax",
-    "torch_cluster",
-    "pytorch_lightning",
-    "jaxlib",
+    "pytorch-lightning",
     "numba",
     "scikit-learn",
     "seaborn"
 ]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+torch-cluster = { index = "pyg-torch28-cu128" }
+torch-scatter = { index = "pyg-torch28-cu128" }
+torch-sparse = { index = "pyg-torch28-cu128" }
+torch-spline-conv = { index = "pyg-torch28-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-torch28-cu128"
+url = "https://data.pyg.org/whl/torch-2.8.0+cu128.html"
+format = "flat"
+explicit = true
 
 [build-system]
 requires = ["setuptools>=45", "wheel", "cython", "pybind11"]
@@ -38,3 +59,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.uv.extra-build-dependencies]
 torch-cluster = ["torch"]
+torch-scatter = ["torch"]
+torch-sparse = ["torch"]
+torch-spline-conv = ["torch"]
