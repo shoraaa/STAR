@@ -925,7 +925,7 @@ def main() -> int:
     )
     write_csv(
         out_dir / "original_instances.csv",
-        [row for row in all_rows if row.get("status") == "ok"],
+        [row for row in all_rows if row.get("status") in {"ok", "FAILED"} and row.get("instance")],
         result_fields,
     )
     write_csv(
