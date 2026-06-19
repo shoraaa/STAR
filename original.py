@@ -495,9 +495,10 @@ def parse_instance_rows(text: str, job: OriginalJob, log_path: Path) -> list[dic
         for match in FAST_T2T_INSTANCE_PATTERN.finditer(text):
             data = match.groupdict()
             size = int(data["size"])
+            status, note = classify_instance_status(data["gap"], data["time"])
             rows.append(
                 {
-                    "status": "ok",
+                    "status": status,
                     "method": job.method,
                     "problem": job.problem,
                     "job_id": job.job_id,
@@ -509,7 +510,7 @@ def parse_instance_rows(text: str, job: OriginalJob, log_path: Path) -> list[dic
                     "gap_percent": data["gap"],
                     "time_seconds": data["time"],
                     "source_log": str(log_path),
-                    "note": "",
+                    "note": note,
                 }
             )
         if rows:
@@ -528,39 +529,9 @@ def parse_instance_rows(text: str, job: OriginalJob, log_path: Path) -> list[dic
                 break
             seen.add(key)
             
-            status = "ok"
-            note = ""
             gap_str = data.get("gap", "")
             time_str = data.get("time", "")
-            
-            if gap_str:
-                if "OOM" in gap_str.upper() or "NAN" in gap_str.upper() or "INF" in gap_str.upper():
-                    status = "FAILED"
-                    note = gap_str.strip()
-                else:
-                    try:
-                        if float(gap_str) > 100.0:
-                            status = "FAILED"
-                            note = "gap > 100%"
-                    except ValueError:
-                        pass
-            
-            if status == "ok" and time_str:
-                if "OOM" in time_str.upper() or "NAN" in time_str.upper() or "INF" in time_str.upper():
-                    status = "FAILED"
-                    note = time_str.strip()
-                else:
-                    try:
-                        if float(time_str) > 3600.0:
-                            status = "FAILED"
-                            note = "time > 3600s"
-                    except ValueError:
-                        pass
-
-            # Detect OOM in the whole line as well, just in case
-            if status == "ok" and "OOM" in line.upper():
-                status = "FAILED"
-                note = "OOM"
+            status, note = classify_instance_status(gap_str, time_str, line)
                 
             rows.append(
                 {
@@ -581,6 +552,28 @@ def parse_instance_rows(text: str, job: OriginalJob, log_path: Path) -> list[dic
             )
             break
     return rows
+
+
+def classify_instance_status(gap_str: str, time_str: str, line: str = "") -> tuple[str, str]:
+    for value in (gap_str, time_str):
+        upper = value.upper()
+        if "OOM" in upper or "NAN" in upper or "INF" in upper:
+            return "FAILED", value.strip()
+    if "OOM" in line.upper():
+        return "FAILED", "OOM"
+    if gap_str:
+        try:
+            if float(gap_str) > 100.0:
+                return "FAILED", "gap > 100%"
+        except ValueError:
+            pass
+    if time_str:
+        try:
+            if float(time_str) > 1000.0:
+                return "FAILED", "time > 1000s"
+        except ValueError:
+            pass
+    return "ok", ""
 
 
 def parse_summary_rows(text: str, job: OriginalJob, log_path: Path) -> list[dict[str, str]]:
@@ -618,7 +611,7 @@ def parse_summary_rows(text: str, job: OriginalJob, log_path: Path) -> list[dict
 def summarize(rows: Iterable[dict[str, str]], job: OriginalJob) -> list[dict[str, str]]:
     groups: dict[str, list[dict[str, str]]] = {}
     for row in rows:
-        if row.get("status") != "ok":
+        if row.get("status") not in {"ok", "FAILED"}:
             continue
         groups.setdefault(row["size_group"], []).append(row)
 
@@ -627,8 +620,10 @@ def summarize(rows: Iterable[dict[str, str]], job: OriginalJob) -> list[dict[str
         bucket_rows = groups.get(bucket, [])
         if not bucket_rows:
             continue
-        gaps = [float(row["gap_percent"]) for row in bucket_rows if row.get("gap_percent")]
-        times = [float(row["time_seconds"]) for row in bucket_rows if row.get("time_seconds")]
+        solved_rows = [row for row in bucket_rows if row.get("status") == "ok"]
+        failed_count = len(bucket_rows) - len(solved_rows)
+        gaps = [float(row["gap_percent"]) for row in solved_rows if row.get("gap_percent")]
+        times = [float(row["time_seconds"]) for row in solved_rows if row.get("time_seconds")]
         summary.append(
             {
                 "status": "computed",
@@ -636,7 +631,11 @@ def summarize(rows: Iterable[dict[str, str]], job: OriginalJob) -> list[dict[str
                 "problem": job.problem,
                 "job_id": job.job_id,
                 "size_group": bucket,
-                "count": str(len(bucket_rows)),
+                "count": str(len(solved_rows)),
+                "solved_count": str(len(solved_rows)),
+                "failed_count": str(failed_count),
+                "total_count": str(len(bucket_rows)),
+                "reliability_percent": f"{100.0 * len(solved_rows) / len(bucket_rows):.6f}",
                 "avg_gap_percent": f"{sum(gaps) / len(gaps):.6f}" if gaps else "",
                 "total_time_seconds": f"{sum(times):.6f}" if times else "",
                 "avg_time_seconds": f"{sum(times) / len(times):.6f}" if times else "",
@@ -904,24 +903,30 @@ def main() -> int:
         if any(row["status"] in failed_statuses for row in rows) and not continue_after_error:
             break
 
+    result_fields = [
+        "status",
+        "method",
+        "problem",
+        "job_id",
+        "instance",
+        "size",
+        "size_group",
+        "cost",
+        "bks",
+        "gap_percent",
+        "time_seconds",
+        "source_log",
+        "note",
+    ]
     write_csv(
         out_dir / "original_results.csv",
         all_rows,
-        [
-            "status",
-            "method",
-            "problem",
-            "job_id",
-            "instance",
-            "size",
-            "size_group",
-            "cost",
-            "bks",
-            "gap_percent",
-            "time_seconds",
-            "source_log",
-            "note",
-        ],
+        result_fields,
+    )
+    write_csv(
+        out_dir / "original_instances.csv",
+        [row for row in all_rows if row.get("status") == "ok"],
+        result_fields,
     )
     write_csv(
         out_dir / "original_summary.csv",
@@ -933,6 +938,10 @@ def main() -> int:
             "job_id",
             "size_group",
             "count",
+            "solved_count",
+            "failed_count",
+            "total_count",
+            "reliability_percent",
             "avg_gap_percent",
             "total_time_seconds",
             "avg_time_seconds",
@@ -940,6 +949,7 @@ def main() -> int:
         ],
     )
     print(f"[original] wrote {out_dir / 'original_results.csv'}")
+    print(f"[original] wrote {out_dir / 'original_instances.csv'}")
     print(f"[original] wrote {out_dir / 'original_summary.csv'}")
     return 0
 
