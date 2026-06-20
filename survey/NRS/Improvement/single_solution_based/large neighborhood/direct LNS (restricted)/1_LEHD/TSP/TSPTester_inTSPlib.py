@@ -559,6 +559,9 @@ class TSPTester():
         all_gaps, all_times = [], []
         solved_instances = 0
         total_instances = 0
+        consecutive_timeouts = 0
+        instance_timeout = os.environ.get("NRS_INSTANCE_TIMEOUT")
+        instance_timeout = float(instance_timeout) if instance_timeout else None
 
         start_all = time.time()
 
@@ -619,7 +622,7 @@ class TSPTester():
 
         # [CHANGED] 主循环：不再遍历 tsp_files，而是遍历 candidates（来自 tsplib_cost）
         from tqdm import tqdm
-        for key_name, dimension, optimal, fpath in tqdm(candidates, desc="TSPLIB"):
+        for cand_idx, (key_name, dimension, optimal, fpath) in enumerate(tqdm(candidates, desc="TSPLIB")):
 
             # 匹配桶（按 dimension）
             target_bucket_idx = None
@@ -641,14 +644,38 @@ class TSPTester():
             t0 = time.time()
             try:
                 # [CHANGED] 传入 _test_one_instance_tsplib 的“实例名”使用 tsplib_cost 的 key（= 文件名），不是文件内 NAME
-                stu_score = self._test_one_instance_tsplib(key_name, dimension, float(optimal))
+                deadline = t0 + instance_timeout if instance_timeout is not None else None
+                stu_score = self._test_one_instance_tsplib(key_name, dimension, float(optimal), deadline=deadline)
                 solved_instances += 1
                 if self.device.type == 'cuda':
                     torch.cuda.synchronize()
                 t1 = time.time()
                 inst_time = t1 - t0
+                consecutive_timeouts = 0
+            except TimeoutError:
+                inst_time = time.time() - t0
+                self.logger.info(f"[Timeout] Instance {key_name} (n={dimension}) | opt={optimal:.2f} | time={inst_time:.2f}s")
+                consecutive_timeouts += 1
+                if consecutive_timeouts >= 2:
+                    for next_key, next_dimension, next_optimal, _next_fpath in candidates[cand_idx + 1:]:
+                        next_bucket_idx = None
+                        for i, (lo, hi) in enumerate(scale_ranges):
+                            if lo <= next_dimension < hi:
+                                next_bucket_idx = i
+                                break
+                        if next_bucket_idx is None:
+                            continue
+                        total_instances += 1
+                        self.logger.info(
+                            f"[Timeout] Instance {next_key} (n={next_dimension}) | "
+                            f"opt={float(next_optimal):.2f} | time={instance_timeout or inst_time:.2f}s"
+                        )
+                    self.logger.info("[Timeout] stopping after 2 consecutive instance timeouts")
+                    break
+                continue
             except Exception as e:
                 self.logger.info(f"[Error] instance {key_name} (size={dimension}) failed, err={e}")
+                consecutive_timeouts = 0
                 continue
 
             gap = (stu_score - float(optimal)) * 100.0 / float(optimal)
@@ -851,8 +878,12 @@ class TSPTester():
     # ---------------------------
     # ! 单实例测试（沿用你现有 _test_one_batch 的主体，但改为“指定 name/size/opt”）
     # ---------------------------
-    def _test_one_instance_tsplib(self, inst_name, inst_size, inst_optimal):
+    def _test_one_instance_tsplib(self, inst_name, inst_size, inst_optimal, deadline=None):
         """返回该实例最终学生解（含 RRC）的长度（用于计算 gap）。"""
+        def _check_timeout():
+            if deadline is not None and time.time() > deadline:
+                raise TimeoutError(f"instance exceeded timeout: {inst_name}")
+
         self.model.eval()
         with torch.no_grad():
             # 用原有 load_problems 的 tsplib 分支加载
@@ -876,6 +907,7 @@ class TSPTester():
 
             # greedy 第一次解
             while not done:
+                _check_timeout()
                 if current_step == 0:
                     selected_teacher = torch.zeros(B_V, dtype=torch.int64)
                     selected_student = selected_teacher
@@ -891,6 +923,7 @@ class TSPTester():
             # RRC
             budget = self.env_params.get('RRC_budget', 0)
             for _ in range(budget):
+                _check_timeout()
                 # 重新加载 + 子路径破坏
                 self.env.load_problems(0, 1, inst_name, inst_size, inst_optimal)
 
@@ -907,6 +940,7 @@ class TSPTester():
                 state, reward, reward_student, done = self.env.pre_step()
 
                 while not done:
+                    _check_timeout()
                     if current_step == 0:
                         selected_teacher = self.env.solution[:, -1]
                         selected_student = self.env.solution[:, -1]
@@ -926,6 +960,7 @@ class TSPTester():
                     ahter_repair_sub_solution, before_reward, after_reward,
                     first_node_index, length_of_subpath, double_solution)
                 best_select_node_list = after_repair_complete_solution
+                _check_timeout()
 
             # 返回学生解长度（标量）
             current_best_length = self.env._get_travel_distance_2(self.origin_problem, best_select_node_list)

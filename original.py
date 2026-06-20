@@ -7,6 +7,7 @@ import argparse
 import csv
 import os
 import re
+import selectors
 import subprocess
 import sys
 import time
@@ -171,6 +172,11 @@ JOBS: tuple[OriginalJob, ...] = (
 
 INSTANCE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
+        r"\[Timeout\]\s*Instance\s+(?P<name>[^\s]+)\s+\(n=(?P<size>\d+)\)\s*\|\s*"
+        r"opt=(?P<opt>[-+0-9.eE]+|OOM|NaN|inf)\s*\|\s*time=(?P<time>[-+0-9.eE]+)s?",
+        re.IGNORECASE,
+    ),
+    re.compile(
         r"Instance:\s*(?P<name>[^,\n]+),\s*Dimension:\s*(?P<size>\d+),\s*"
         r"Cost:\s*(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*Optimal:\s*(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*"
         r"Gap:\s*(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*Time:\s*(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?"
@@ -268,6 +274,7 @@ def parse_args() -> argparse.Namespace:
         description="Run original NRS Survey scripts and normalize stdout/log output to CSV."
     )
     parser.add_argument("--methods", nargs="+", default=["all"], help="Methods or job ids, e.g. bq sil_prc lehd_tsp.")
+    parser.add_argument("--skip", nargs="+", default=[], help="Methods or job ids to skip, e.g. lehd_rrc lehd_rrc_tsp.")
     parser.add_argument("--problems", nargs="+", choices=["tsp", "cvrp"], default=["tsp", "cvrp"])
     parser.add_argument(
         "--size",
@@ -278,6 +285,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", default=None, help="Output directory. Defaults to results/original-<timestamp>.")
     parser.add_argument("--python", default=sys.executable, help="Python executable used to run original scripts.")
     parser.add_argument("--timeout", type=float, default=None, help="Optional per-job timeout in seconds.")
+    parser.add_argument("--stream", action="store_true", help="Stream each child job's stdout/stderr while still saving raw logs.")
     parser.add_argument("--continue-on-error", action="store_true", help="Keep running remaining jobs after failure.")
     parser.add_argument("--fail-fast", action="store_true", help="Stop after the first failed job, including --methods all.")
     parser.add_argument("--list", action="store_true", help="List available original jobs and exit.")
@@ -306,7 +314,7 @@ def job_size_bounds(args: argparse.Namespace, job: OriginalJob) -> tuple[int, in
     return size_bounds(args.size)
 
 
-def select_jobs(methods: list[str], problems: list[str]) -> list[OriginalJob]:
+def select_jobs(methods: list[str], problems: list[str], skip: list[str] | None = None) -> list[OriginalJob]:
     if methods == ["all"]:
         selected = [job for job in JOBS if job.problem in problems]
     else:
@@ -316,6 +324,9 @@ def select_jobs(methods: list[str], problems: list[str]) -> list[OriginalJob]:
             for job in JOBS
             if job.problem in problems and (job.method in wanted or job.job_id in wanted)
         ]
+    if skip:
+        skipped = set(skip)
+        selected = [job for job in selected if job.method not in skipped and job.job_id not in skipped]
     if not selected:
         raise SystemExit("no original jobs selected")
     return selected
@@ -555,6 +566,8 @@ def parse_instance_rows(text: str, job: OriginalJob, log_path: Path) -> list[dic
 
 
 def classify_instance_status(gap_str: str, time_str: str, line: str = "") -> tuple[str, str]:
+    if "TIMEOUT" in line.upper():
+        return "FAILED", "timeout"
     for value in (gap_str, time_str):
         upper = value.upper()
         if "OOM" in upper or "NAN" in upper or "INF" in upper:
@@ -683,6 +696,8 @@ def job_env(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> dict[s
     env["NRS_SURVEY_CVRP_DIR"] = str(os.path.relpath(SURVEY_CVRP_DIR, job.script.parent))
     if not args.no_skip_src_copy:
         env["NRS_SKIP_SRC_COPY"] = "1"
+    if args.timeout is not None:
+        env.setdefault("NRS_INSTANCE_TIMEOUT", str(args.timeout))
 
     bounds = job_size_bounds(args, job)
     if args.size == "dev":
@@ -738,6 +753,69 @@ def ensure_fast_t2t_cython(args: argparse.Namespace, job: OriginalJob) -> None:
     )
 
 
+def supports_instance_timeout(job: OriginalJob) -> bool:
+    return job.job_id in {"lehd_rrc_tsp"}
+
+
+def run_child_process(
+    command: list[str],
+    cwd: Path,
+    env: dict[str, str],
+    timeout: float | None,
+    stream: bool,
+    job_id: str,
+) -> subprocess.CompletedProcess[str]:
+    if not stream:
+        return subprocess.run(
+            command,
+            cwd=str(cwd),
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+        )
+
+    proc = subprocess.Popen(
+        command,
+        cwd=str(cwd),
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=1,
+    )
+    assert proc.stdout is not None
+    assert proc.stderr is not None
+
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+    selector = selectors.DefaultSelector()
+    selector.register(proc.stdout, selectors.EVENT_READ, ("stdout", stdout_parts, sys.stdout))
+    selector.register(proc.stderr, selectors.EVENT_READ, ("stderr", stderr_parts, sys.stderr))
+
+    start = time.perf_counter()
+    timed_out = False
+    while selector.get_map():
+        if timeout is not None and time.perf_counter() - start > timeout:
+            timed_out = True
+            proc.kill()
+        for key, _ in selector.select(timeout=0.2):
+            stream_name, parts, output = key.data
+            line = key.fileobj.readline()
+            if line:
+                parts.append(line)
+                print(f"[{job_id} {stream_name}] {line}", end="", file=output, flush=True)
+            else:
+                selector.unregister(key.fileobj)
+
+    returncode = proc.wait()
+    stdout = "".join(stdout_parts)
+    stderr = "".join(stderr_parts)
+    if timed_out:
+        raise subprocess.TimeoutExpired(command, timeout, output=stdout, stderr=stderr)
+    return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+
+
 def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     if not job.script.exists():
         failure = {
@@ -771,13 +849,14 @@ def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[
     log_root = out_dir / "method_logs" / job.job_id
     before_logs = discover_logs(log_root)
     start = time.perf_counter()
-    proc = subprocess.run(
+    process_timeout = None if args.timeout is not None and supports_instance_timeout(job) else args.timeout
+    proc = run_child_process(
         command,
-        cwd=str(job.script.parent),
+        cwd=job.script.parent,
         env=job_env(args, out_dir, job),
-        text=True,
-        capture_output=True,
-        timeout=args.timeout,
+        timeout=process_timeout,
+        stream=args.stream,
+        job_id=job.job_id,
     )
     elapsed = time.perf_counter() - start
     stdout_path.write_text(proc.stdout, encoding="utf-8", errors="replace")
@@ -853,7 +932,7 @@ def main() -> int:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path(args.out_dir) if args.out_dir else ROOT / "results" / f"original-{timestamp}"
     out_dir = out_dir.resolve()
-    jobs = select_jobs(args.methods, args.problems)
+    jobs = select_jobs(args.methods, args.problems, args.skip)
     continue_after_error = (args.methods == ["all"] and not args.fail_fast) or args.continue_on_error
     missing = missing_jobs(jobs)
     if missing:
