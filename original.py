@@ -38,6 +38,12 @@ class OriginalJob:
 
 
 JOBS: tuple[OriginalJob, ...] = (
+    OriginalJob("nn", "tsp", ROOT / "survey/heuristics/nearest neighbor/TSP/nearest_neighbor_survey.py"),
+    OriginalJob("nn", "cvrp", ROOT / "survey/heuristics/nearest neighbor/CVRP/nearest_neighbor_survey_cvrp.py"),
+    OriginalJob("elkai", "tsp", ROOT / "survey/heuristics/elkai/TSP/elkai_survey.py"),
+    OriginalJob("pyvrp", "cvrp", ROOT / "survey/heuristics/pyvrp/CVRP/pyvrp_survey_cvrp.py"),
+    OriginalJob("lkh", "tsp", ROOT / "survey/heuristics/lkh/TSP/lkh_survey.py"),
+    OriginalJob("hygese", "cvrp", ROOT / "survey/heuristics/hygese/CVRP/hygese_survey_cvrp.py"),
     OriginalJob("bq", "tsp", SURVEY / "Construction/single-stage/appending/1_BQ/test_tsp_survey.py", ("--seed", "0")),
     OriginalJob("bq", "cvrp", SURVEY / "Construction/single-stage/appending/1_BQ/test_cvrp_survey.py", ("--seed", "0")),
     OriginalJob("lehd", "tsp", SURVEY / "Construction/single-stage/appending/2_LEHD/TSP/test_survey.py"),
@@ -232,6 +238,18 @@ INSTANCE_PATTERNS: tuple[re.Pattern[str], ...] = (
         re.IGNORECASE,
     ),
     re.compile(
+        r"Instance:\s*(?P<name>[^,]+),\s*dim:\s*(?P<size>\d+),\s*BKS:\s*(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*"
+        r"(?:NN cost|LKH cost|HGS cost|cost):\s*(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*"
+        r"GAP:\s*(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*time:\s*(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"Instance:\s*(?P<name>[^,]+),\s*Dimension:\s*(?P<size>\d+),\s*BKS:\s*(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*"
+        r"(?:NN cost|LKH cost|HGS cost|cost):\s*(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*"
+        r"Gap:\s*(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*Time:\s*(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?",
+        re.IGNORECASE,
+    ),
+    re.compile(
         r"Instance:\s*(?P<name>[^,]+),\s*dim:\s*(?P<size>\d+),\s*optimal cost:\s*(?P<opt>[-+0-9.eE]+|OOM|NaN|inf),\s*Pred cost:\s*(?P<cost>[-+0-9.eE]+|OOM|NaN|inf),\s*Gap:\s*(?P<gap>[-+0-9.eE]+|OOM|NaN|inf)%?,\s*Time:\s*(?P<time>[-+0-9.eE]+|OOM|NaN|inf)s?",
         re.IGNORECASE,
     ),
@@ -266,6 +284,21 @@ SUMMARY_PATTERNS: tuple[re.Pattern[str], ...] = (
         r"avg_gap=(?P<gap>[-+0-9.eE]+)%,\s*avg_time=(?P<time>[-+0-9.eE]+)s",
         re.IGNORECASE,
     ),
+    re.compile(
+        r"(?P<bucket>\[[^\]]+\]?\)?)\s*,\s*number:\s*(?P<count>\d+),\s*"
+        r"avg\s*(?:GAP|gap(?:\(no aug\))?):\s*(?P<gap>[-+0-9.eE]+)%,\s*avg time:\s*(?P<time>[-+0-9.eE]+)s",
+        re.IGNORECASE,
+    ),
+)
+
+GAP_OVER_TIME_PATTERN = re.compile(
+    r"\[GAP_OVER_TIME\]\s*"
+    r"elapsed_second=(?P<elapsed_second>\d+)\s+"
+    r"solved_count=(?P<solved_count>\d+)\s+"
+    r"avg_gap=(?P<avg_gap>[-+0-9.eE]+|NaN|inf)\s+"
+    r"last_instance=(?P<last_instance>\S*)\s+"
+    r"last_size=(?P<last_size>\S*)",
+    re.IGNORECASE,
 )
 
 
@@ -621,6 +654,33 @@ def parse_summary_rows(text: str, job: OriginalJob, log_path: Path) -> list[dict
     return rows
 
 
+def parse_gap_over_time_rows(text: str, job: OriginalJob, _log_path: Path) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for line in text.splitlines():
+        match = GAP_OVER_TIME_PATTERN.search(line)
+        if not match:
+            continue
+        data = match.groupdict()
+        key = (job.job_id, data["elapsed_second"])
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(
+            {
+                "method": job.method,
+                "problem": job.problem,
+                "job_id": job.job_id,
+                "elapsed_second": data["elapsed_second"],
+                "solved_count": data["solved_count"],
+                "avg_gap_percent": data["avg_gap"],
+                "last_instance": data["last_instance"],
+                "last_size": data["last_size"],
+            }
+        )
+    return rows
+
+
 def summarize(rows: Iterable[dict[str, str]], job: OriginalJob) -> list[dict[str, str]]:
     groups: dict[str, list[dict[str, str]]] = {}
     for row in rows:
@@ -678,6 +738,18 @@ def dedupe_rows(rows: Iterable[dict[str, str]]) -> list[dict[str, str]]:
     return deduped
 
 
+def dedupe_gap_time_rows(rows: Iterable[dict[str, str]]) -> list[dict[str, str]]:
+    deduped: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        key = (row.get("job_id", ""), row.get("elapsed_second", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    return deduped
+
+
 def write_csv(path: Path, rows: list[dict[str, str]], fieldnames: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -685,6 +757,110 @@ def write_csv(path: Path, rows: list[dict[str, str]], fieldnames: list[str]) -> 
         writer.writeheader()
         for row in rows:
             writer.writerow({name: row.get(name, "") for name in fieldnames})
+
+
+def parse_float(value: str) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed != parsed:
+        return None
+    return parsed
+
+
+def gap_over_time_rows(rows: Iterable[dict[str, str]]) -> list[dict[str, str]]:
+    by_job: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        if row.get("status") != "ok" or not row.get("instance"):
+            continue
+        gap = parse_float(row.get("gap_percent", ""))
+        elapsed = parse_float(row.get("time_seconds", ""))
+        if gap is None or elapsed is None:
+            continue
+        by_job.setdefault(row["job_id"], []).append(row)
+
+    timeline: list[dict[str, str]] = []
+    for job_id, job_rows in by_job.items():
+        if not job_rows:
+            continue
+
+        cumulative_time = 0.0
+        completed: list[tuple[float, float, dict[str, str]]] = []
+        for row in job_rows:
+            elapsed = parse_float(row.get("time_seconds", "")) or 0.0
+            gap = parse_float(row.get("gap_percent", ""))
+            if gap is None:
+                continue
+            cumulative_time += max(0.0, elapsed)
+            completed.append((cumulative_time, gap, row))
+
+        if not completed:
+            continue
+
+        max_second = max(1, int(completed[-1][0] + 0.999999))
+        next_idx = 0
+        gap_sum = 0.0
+        latest_row = completed[0][2]
+        for second in range(1, max_second + 1):
+            while next_idx < len(completed) and completed[next_idx][0] <= second:
+                _done_time, gap, latest_row = completed[next_idx]
+                gap_sum += gap
+                next_idx += 1
+            solved_count = next_idx
+            avg_gap = gap_sum / solved_count if solved_count else None
+            timeline.append(
+                {
+                    "method": latest_row.get("method", ""),
+                    "problem": latest_row.get("problem", ""),
+                    "job_id": job_id,
+                    "elapsed_second": str(second),
+                    "solved_count": str(solved_count),
+                    "avg_gap_percent": f"{avg_gap:.6f}" if avg_gap is not None else "",
+                    "last_instance": latest_row.get("instance", "") if solved_count else "",
+                    "last_size": latest_row.get("size", "") if solved_count else "",
+                }
+            )
+    return timeline
+
+
+def plot_gap_over_time(rows: list[dict[str, str]], path: Path) -> bool:
+    if not rows:
+        return False
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception as exc:
+        print(f"[original] warning: could not import matplotlib for gap plot: {exc}", file=sys.stderr)
+        return False
+
+    by_job: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        if not row.get("avg_gap_percent"):
+            continue
+        by_job.setdefault(row["job_id"], []).append(row)
+
+    if not by_job:
+        return False
+
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    for job_id, job_rows in sorted(by_job.items()):
+        seconds = [int(row["elapsed_second"]) for row in job_rows]
+        gaps = [float(row["avg_gap_percent"]) for row in job_rows]
+        ax.plot(seconds, gaps, marker="o", linewidth=1.8, markersize=3, label=job_id)
+
+    ax.set_xlabel("Elapsed seconds within method")
+    ax.set_ylabel("Cumulative average gap (%)")
+    ax.set_title("Original Baselines: Average Gap Over Time")
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc="best", fontsize=8)
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+    return True
 
 
 def job_env(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> dict[str, str]:
@@ -703,6 +879,16 @@ def job_env(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> dict[s
     if args.size == "dev":
         env["NRS_SMOKE"] = "1"
         env["NRS_SMOKE_EPISODES"] = str(args.smoke_episodes)
+        if job.method in {"nn", "elkai", "pyvrp", "lkh", "hygese"}:
+            env.setdefault("NRS_EVAL_DEBUG_SMALLEST", "1")
+        if job.method == "pyvrp":
+            env.setdefault("NRS_PYVRP_MAX_ITERATIONS", "1")
+        if job.method == "lkh":
+            env.setdefault("NRS_LKH_MAX_TRIALS", "1")
+            env.setdefault("NRS_LKH_RUNS", "1")
+        if job.method == "hygese":
+            env.setdefault("NRS_HYGESE_NB_ITER", "1")
+            env.setdefault("NRS_HYGESE_TIME_LIMIT", "0")
     if bounds is not None:
         low, high = bounds
         env["NRS_EVAL_SIZE_LOW"] = str(low)
@@ -816,7 +1002,11 @@ def run_child_process(
     return subprocess.CompletedProcess(command, returncode, stdout, stderr)
 
 
-def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+def run_job(
+    args: argparse.Namespace,
+    out_dir: Path,
+    job: OriginalJob,
+) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
     if not job.script.exists():
         failure = {
             "status": "missing_script",
@@ -833,7 +1023,7 @@ def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[
             "source_log": str(job.script),
             "note": "script not found",
         }
-        return [failure], []
+        return [failure], [], []
 
     ensure_sil_smoke_data(args, job)
     ensure_sil_prc_checkpoints(job)
@@ -869,11 +1059,14 @@ def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[
 
     rows: list[dict[str, str]] = []
     summary_rows: list[dict[str, str]] = []
+    gap_time_rows: list[dict[str, str]] = []
     for log_path, text in texts:
         rows.extend(parse_instance_rows(text, job, log_path))
         summary_rows.extend(parse_summary_rows(text, job, log_path))
+        gap_time_rows.extend(parse_gap_over_time_rows(text, job, log_path))
 
     rows = dedupe_rows(rows)
+    gap_time_rows = dedupe_gap_time_rows(gap_time_rows)
     summary_rows.extend(summarize(rows, job))
     if proc.returncode != 0:
         note = f"exit code {proc.returncode}"
@@ -919,7 +1112,7 @@ def run_job(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> tuple[
                 "note": "script finished but parser found no per-instance rows",
             }
         )
-    return rows, summary_rows
+    return rows, summary_rows, gap_time_rows
 
 
 def main() -> int:
@@ -953,10 +1146,11 @@ def main() -> int:
 
     all_rows: list[dict[str, str]] = []
     all_summary_rows: list[dict[str, str]] = []
+    all_gap_time_rows: list[dict[str, str]] = []
     for job in jobs:
         print(f"[original] running {job.job_id}: {job.script.relative_to(ROOT)}", flush=True)
         try:
-            rows, summary_rows = run_job(args, out_dir, job)
+            rows, summary_rows, gap_time_rows = run_job(args, out_dir, job)
         except subprocess.TimeoutExpired as exc:
             rows = [
                 {
@@ -976,8 +1170,10 @@ def main() -> int:
                 }
             ]
             summary_rows = []
+            gap_time_rows = []
         all_rows.extend(rows)
         all_summary_rows.extend(summary_rows)
+        all_gap_time_rows.extend(gap_time_rows)
         failed_statuses = {"failed", "FAILED", "timeout", "missing_script"}
         if any(row["status"] in failed_statuses for row in rows) and not continue_after_error:
             break
@@ -1027,9 +1223,33 @@ def main() -> int:
             "source_log",
         ],
     )
+    fallback_gap_timeline = gap_over_time_rows(all_rows)
+    explicit_jobs = {row["job_id"] for row in all_gap_time_rows}
+    gap_timeline = all_gap_time_rows + [
+        row for row in fallback_gap_timeline if row.get("job_id") not in explicit_jobs
+    ]
+    write_csv(
+        out_dir / "original_gap_over_time.csv",
+        gap_timeline,
+        [
+            "method",
+            "problem",
+            "job_id",
+            "elapsed_second",
+            "solved_count",
+            "avg_gap_percent",
+            "last_instance",
+            "last_size",
+        ],
+    )
+    gap_plot_path = out_dir / "original_gap_over_time.png"
+    wrote_gap_plot = plot_gap_over_time(gap_timeline, gap_plot_path)
     print(f"[original] wrote {out_dir / 'original_results.csv'}")
     print(f"[original] wrote {out_dir / 'original_instances.csv'}")
     print(f"[original] wrote {out_dir / 'original_summary.csv'}")
+    print(f"[original] wrote {out_dir / 'original_gap_over_time.csv'}")
+    if wrote_gap_plot:
+        print(f"[original] wrote {gap_plot_path}")
     return 0
 
 

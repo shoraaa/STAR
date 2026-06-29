@@ -31,7 +31,11 @@ dependencies = [
     "pytorch-lightning",
     "numba",
     "scikit-learn",
-    "seaborn"
+    "seaborn",
+    "pyvrp>=0.13.4",
+    "elkai>=2.0.1",
+    "lkh>=2.0.0",
+    "hygese>=0.1.0",
 ]
 
 [tool.uv.sources]

@@ -363,6 +363,11 @@ class CVRPNNTester:
             self.logger.info("Instance name: {}, optimal score: {:.4f}".format(name, optimal))
             self.logger.info("No aug score:{:.3f}, No aug gap:{:.3f}%".format(score, no_aug_gap))
             self.logger.info(f"Instance time (NN only): {inst_time:.3f}s")
+            self.logger.info(
+                "Instance: {}, Dimension: {}, BKS: {:.4f}, NN cost: {:.3f}, Gap: {:.3f}%, Time: {:.3f}s".format(
+                    name, dimension, optimal, score, no_aug_gap, inst_time
+                )
+            )
 
         end_time_range = time.time()
         during_range = end_time_range - start_time_range
