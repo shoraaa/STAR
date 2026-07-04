@@ -1,0 +1,20 @@
+Total TSPLIB instances detected: 4
+#################  LKH Test on TSPLIB_Survey  #################
+TSPLIB folder: survey/0_data_survey/survey_bench_tsp
+LKH executable: /home/shora/Research/STAR/survey/heuristics/LKH-3.0.14/LKH
+LKH max_trials: 1, runs: 1, time_limit: 10s
+-----------------------------------------------------------------
+[1/4] Instance: wi29, dim: 29, BKS: 27603, LKH cost: 27603, GAP: 0.000%, time: 0.004s
+[GAP_OVER_TIME] elapsed_second=1 solved_count=1 avg_gap=0.000000 last_instance=wi29 last_size=29
+[2/4] Instance: dj38, dim: 38, BKS: 6656, LKH cost: 6656, GAP: 0.000%, time: 0.004s
+[3/4] Instance: eil51, dim: 51, BKS: 426, LKH cost: 433, GAP: 1.643%, time: 0.006s
+[4/4] Instance: berlin52, dim: 52, BKS: 7542, LKH cost: 7542, GAP: 0.000%, time: 0.005s
+-----------------------------------------------------------------
+All instances found: 4, solved: 4
+Total time: 0.02s, avg time per solved instance: 0.01s
+#################  Bucket Summary  #################
+[0, 1000), number: 4, avg GAP: 0.411%, avg time: 0.005s
+[1000, 10000), number: 0, avg GAP: 0.000%, avg time: 0.000s
+[10000, 100000], number: 0, avg GAP: 0.000%, avg time: 0.000s
+###################################  Overall Summary  ##########################################
+All solved instances, number: 4, avg GAP: 0.411%, avg time: 0.005s

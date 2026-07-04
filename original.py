@@ -865,6 +865,17 @@ def plot_gap_over_time(rows: list[dict[str, str]], path: Path) -> bool:
 
 def job_env(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> dict[str, str]:
     env = os.environ.copy()
+    for name in (
+        "NRS_EVAL_SIZE_LOW",
+        "NRS_EVAL_SIZE_HIGH",
+        "NRS_SURVEY_SIZE_LOW",
+        "NRS_SURVEY_SIZE_HIGH",
+        "NRS_EVAL_SIZE_BUCKET",
+        "NRS_EVAL_DEBUG_SMALLEST",
+        "NRS_SMOKE",
+        "NRS_SMOKE_EPISODES",
+    ):
+        env.pop(name, None)
     for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
         env.setdefault(name, "20")
     env["NRS_METHOD_LOG_ROOT"] = str(out_dir / "method_logs" / job.job_id)
