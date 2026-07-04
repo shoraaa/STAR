@@ -115,23 +115,30 @@ def data_for_hygese(
     return data
 
 
+def default_iteration_budget(size: int) -> int:
+    return max(1, size // 3)
+
+
 def solve_one(
     name: str,
+    dimension: int,
     coords: list[list[float]],
     demands: list[int],
     capacity: float,
     edge_weight_type: str | None,
-) -> tuple[float, int]:
+    nb_iter_override: int | None,
+) -> tuple[float, int, int]:
+    nb_iter = nb_iter_override if nb_iter_override is not None else default_iteration_budget(dimension)
     params = AlgorithmParameters(
         seed=int(os.environ.get("NRS_HYGESE_SEED", "0")),
-        nbIter=int(os.environ.get("NRS_HYGESE_NB_ITER", "20000")),
-        timeLimit=float(os.environ.get("NRS_HYGESE_TIME_LIMIT", "1000")),
+        nbIter=nb_iter,
+        timeLimit=float(os.environ.get("NRS_HYGESE_TIME_LIMIT", "3600")),
     )
     data = data_for_hygese(name, coords, demands, capacity, edge_weight_type)
     result = Solver(params, verbose=False).solve_cvrp(data, rounding=edge_weight_type != "CEIL_2D")
     if not math.isfinite(result.cost) or result.cost <= 0:
         raise ValueError(f"Hygese returned no feasible route, cost={result.cost}")
-    return float(result.cost), int(result.n_routes)
+    return float(result.cost), int(result.n_routes), int(nb_iter)
 
 
 class HygeseCVRPTester:
@@ -149,6 +156,8 @@ class HygeseCVRPTester:
         self.progress_start_time = time.time()
         self.emitted_second = 0
         self.progress_gap_sum = 0.0
+        nb_iter_override = os.environ.get("NRS_HYGESE_NB_ITER")
+        self.nb_iter_override = int(nb_iter_override) if nb_iter_override is not None else None
 
     def run_lib(self) -> None:
         filename = self.tester_params["filename"]
@@ -213,7 +222,15 @@ class HygeseCVRPTester:
             self.logger.info("Instance name: %s, problem_size: %s, edge_weight: %s", name, dimension, edge_weight_type)
             inst_start = time.time()
             try:
-                score, route_count = solve_one(name, coords, demands, capacity, edge_weight_type)
+                score, route_count, nb_iter = solve_one(
+                    name,
+                    dimension,
+                    coords,
+                    demands,
+                    capacity,
+                    edge_weight_type,
+                    self.nb_iter_override,
+                )
             except Exception as exc:
                 self.logger.info("Error occurred in instance %s, dimension: %s, skip it!", name, dimension)
                 self.logger.info("Error message: %s", exc)
@@ -242,7 +259,7 @@ class HygeseCVRPTester:
                 gap,
                 inst_time,
             )
-            self.logger.info("Hygese routes: %s", route_count)
+            self.logger.info("Hygese routes: %s, nbIter: %s", route_count, nb_iter)
             current_second = max(1, int(time.time() - self.progress_start_time))
             while self.emitted_second < current_second:
                 self.emitted_second += 1
@@ -280,8 +297,8 @@ def main() -> int:
     logger.info("Log directory: %s", log_dir)
     logger.info(
         "Hygese params: nbIter=%s, timeLimit=%s, seed=%s",
-        os.environ.get("NRS_HYGESE_NB_ITER", "20000"),
-        os.environ.get("NRS_HYGESE_TIME_LIMIT", "1000"),
+        os.environ.get("NRS_HYGESE_NB_ITER", "n//3 per instance"),
+        os.environ.get("NRS_HYGESE_TIME_LIMIT", "3600"),
         os.environ.get("NRS_HYGESE_SEED", "0"),
     )
     tester = HygeseCVRPTester(

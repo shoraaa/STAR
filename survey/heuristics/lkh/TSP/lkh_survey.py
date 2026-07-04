@@ -58,10 +58,14 @@ def lkh_binary() -> str:
     return str(REPO_ROOT / "survey" / "heuristics" / "LKH-3.0.14" / "LKH")
 
 
+def default_iteration_budget(size: int) -> int:
+    return max(1, size // 3)
+
+
 def solve_one_tsplib_instance(
     tsp_path: str,
     solver: str,
-    max_trials: int,
+    max_trials_override: int | None,
     runs: int,
     time_limit: int,
 ) -> dict[str, object] | None:
@@ -72,6 +76,7 @@ def solve_one_tsplib_instance(
     if optimal is None:
         raise ValueError(f"optimal value (BKS) of instance {name} not found in tsplib_cost")
 
+    max_trials = max_trials_override if max_trials_override is not None else default_iteration_budget(int(dimension))
     start_time = time.time()
     routes = lkh.solve(
         solver=solver,
@@ -104,6 +109,7 @@ def solve_one_tsplib_instance(
         "cost": float(total_distance),
         "gap": float(gap),
         "time": float(elapsed),
+        "max_trials": int(max_trials),
     }
 
 
@@ -118,9 +124,10 @@ def bucket_label(lo: int, hi: int) -> str:
 def main() -> int:
     lib_path = os.environ.get("NRS_SURVEY_TSP_DIR", str(SURVEY_ROOT / "0_data_survey" / "survey_bench_tsp"))
     solver = lkh_binary()
-    max_trials = int(os.environ.get("NRS_LKH_MAX_TRIALS", "1000000"))
+    max_trials_override = os.environ.get("NRS_LKH_MAX_TRIALS")
+    max_trials = int(max_trials_override) if max_trials_override is not None else None
     runs = int(os.environ.get("NRS_LKH_RUNS", "1"))
-    time_limit = int(os.environ.get("NRS_LKH_TIME_LIMIT", "1000"))
+    time_limit = int(os.environ.get("NRS_LKH_TIME_LIMIT", "3600"))
     scale_ranges = [(0, 1000), (1000, 10000), (10000, 100001)]
     bucket_stats = {rng: {"gaps": [], "times": []} for rng in scale_ranges}
     all_gaps: list[float] = []
@@ -146,7 +153,8 @@ def main() -> int:
     log("#################  LKH Test on TSPLIB_Survey  #################")
     log(f"TSPLIB folder: {lib_path}")
     log(f"LKH executable: {solver}")
-    log(f"LKH max_trials: {max_trials}, runs: {runs}, time_limit: {time_limit}s")
+    max_trials_label = str(max_trials) if max_trials is not None else "n//3 per instance"
+    log(f"LKH max_trials: {max_trials_label}, runs: {runs}, time_limit: {time_limit}s")
     log("-----------------------------------------------------------------")
 
     total_start = time.time()
@@ -158,7 +166,7 @@ def main() -> int:
             result = solve_one_tsplib_instance(
                 tsp_path,
                 solver=solver,
-                max_trials=max_trials,
+                max_trials_override=max_trials,
                 runs=runs,
                 time_limit=time_limit,
             )
@@ -185,7 +193,7 @@ def main() -> int:
         log(
             f"[{idx}/{len(tsp_files)}] Instance: {result['name']}, dim: {dim}, "
             f"BKS: {result['bks']:.0f}, LKH cost: {result['cost']:.0f}, "
-            f"GAP: {gap:.3f}%, time: {elapsed:.3f}s"
+            f"GAP: {gap:.3f}%, time: {elapsed:.3f}s, max_trials: {result['max_trials']}"
         )
         current_second = max(1, int(time.time() - total_start))
         while emitted_second < current_second:

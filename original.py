@@ -899,7 +899,7 @@ def job_env(args: argparse.Namespace, out_dir: Path, job: OriginalJob) -> dict[s
             env.setdefault("NRS_LKH_RUNS", "1")
         if job.method == "hygese":
             env.setdefault("NRS_HYGESE_NB_ITER", "1")
-            env.setdefault("NRS_HYGESE_TIME_LIMIT", "0")
+            env.setdefault("NRS_HYGESE_TIME_LIMIT", "3600")
     if bounds is not None:
         low, high = bounds
         env["NRS_EVAL_SIZE_LOW"] = str(low)
